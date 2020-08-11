@@ -1,27 +1,17 @@
-#include <deal.II/base/function.h>
 #include <deal.II/base/quadrature.h>
 #include <deal.II/dofs/dof_handler.h>
-#include <deal.II/dofs/dof_renumbering.h>
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_values.h>
-#include <deal.II/fe/mapping_q1.h>
 #include <deal.II/grid/grid_tools.h>
 #include <deal.II/grid/grid_generator.h>
-#include <deal.II/grid/tria.h>
-#include <deal.II/grid/tria_accessor.h>
-#include <deal.II/grid/tria_iterator.h>
 #include <deal.II/lac/block_vector.h>
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
 #include <deal.II/lac/solver_bicgstab.h>
-#include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/sparse_ilu.h>
-#include <deal.II/lac/sparse_matrix.h>
-#include <deal.II/lac/vector.h>
 #include <deal.II/numerics/data_out.h>
-#include <deal.II/numerics/matrix_tools.h>
 #include <deal.II/numerics/vector_tools.h>
 
 #include <iostream>
@@ -29,41 +19,43 @@
 
 using namespace dealii;
 
-template <int dim>
-class initialvalues:  public Function<dim>
+template <int dim> class initialvalues: public Function<dim>
 {
-public:
-  initialvalues () : Function<dim>() {};
+public: initialvalues () : Function<dim>() {};
 
-virtual void value_list (const std::vector<Point<dim> > &points,std::vector<double> &values, const unsigned int component = 0) const;
+virtual void value_list (const std::vector<Point<dim>> &points,std::vector<double> &values, const unsigned int component = 0) const;
 };
 
-template <int dim>
-void initialvalues<dim>::value_list(const std::vector<Point<dim> > &points, std::vector<double> &values, const unsigned int) const
+template <int dim> void initialvalues<dim>::value_list (const std::vector<Point<dim>> &points, std::vector<double> &values, const unsigned int) const
 {
-  Assert(values.size() == points.size(), ExcDimensionMismatch(values.size(),points.size()));
+const unsigned int no_of_points = points.size();
 
-  for (unsigned int i = 0; i < values.size(); ++i)
-  // values[i] = 10*(points[i](0)*points[i](0)+points[i](1)*points[i](1))*exp(-0.5*(points[i](0)*points[i](0)+points[i](1)*points[i](1)));
-  values[i] = 10*exp(-2*points[i](0)*points[i](0))*exp(-2*points[i](1)*points[i](1));
+    for (unsigned int point = 0; point < no_of_points; ++point)
+	{
+	const double x = points[point](0); const double y = points[point](1);
+
+    // values[i] = 10*(x*x + y*y)*exp(-0.5*(x*x + y*y));
+    values[point] = 10*exp(-2*(x*x + y*y));
+	}
 }
 
-template <int dim>
-class initialvalueslaplacian:  public Function<dim>
+template <int dim> class initialvalueslaplacian: public Function<dim>
 {
-public:
-  initialvalueslaplacian () : Function<dim>() {};
+public: initialvalueslaplacian () : Function<dim>() {};
 
-virtual void value_list (const std::vector<Point<dim> > &points,std::vector<double> &values, const unsigned int component = 0) const;
+virtual void value_list (const std::vector<Point<dim>> &points,std::vector<double> &values, const unsigned int component = 0) const;
 };
 
-template <int dim>
-void initialvalueslaplacian<dim>::value_list(const std::vector<Point<dim> > &points, std::vector<double> &values, const unsigned int) const
+template <int dim> void initialvalueslaplacian<dim>::value_list (const std::vector<Point<dim>> &points, std::vector<double> &values, const unsigned int) const
 {
-  Assert(values.size() == points.size(), ExcDimensionMismatch(values.size(),points.size()));
+const unsigned int no_of_points = points.size();
 
-  for (unsigned int i = 0; i < values.size(); ++i)
-  values[i] = 80*(-1+2*(points[i](0)*points[i](0)+points[i](1)*points[i](1)))*exp(-2*points[i](0)*points[i](0))*exp(-2*points[i](1)*points[i](1));
+    for (unsigned int point = 0; point < no_of_points; ++point)
+	{
+	const double x = points[point](0); const double y = points[point](1);
+
+    values[point] = 80*(2*(x*x + y*y) - 1)*exp(-2*(x*x + y*y));
+	}
 }
 
 template <int dim>
@@ -74,11 +66,11 @@ class dGcGblowup
     void run ();
 
     // PDE co-efficients
-    double a = 1; // Diffusion coefficient
+    const double a = 1; // Diffusion coefficient
 
     // Discretisation parameters
-    unsigned int space_degree = 2; // Spatial polynomial degree
-	unsigned int time_degree = 1; // Temporal polynomial degree
+    const unsigned int space_degree = 2; // Spatial polynomial degree
+	const unsigned int time_degree = 1; // Temporal polynomial degree
     unsigned int timestep_number = 1; // The current timestep
     double time = 0; // The current time
     double dt = 0.1*0.215; // The current timestep length
@@ -1090,7 +1082,7 @@ void dGcGblowup<dim>::run ()
 {
 // Setup meshes
 GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.copy_triangulation (triangulation_time); old_dof_handler_time.distribute_dofs (old_fe_time);
-GridGenerator::hyper_cube (triangulation_space, -8, 8);  triangulation_space.refine_global (8); old_triangulation_space.copy_triangulation (triangulation_space); old_old_triangulation_space.copy_triangulation (triangulation_space);
+GridGenerator::hyper_cube (triangulation_space, -5, 5);  triangulation_space.refine_global (5); old_triangulation_space.copy_triangulation (triangulation_space); old_old_triangulation_space.copy_triangulation (triangulation_space);
 old_dof_handler_space.distribute_dofs (old_fe_space); old_old_dof_handler_space.distribute_dofs (old_old_fe_space); old_dof_handler.distribute_dofs (old_fe); 
 
 setup_system_full ();
