@@ -61,8 +61,9 @@ const unsigned int no_of_points = points.size();
 template <int dim>
 class dGcGblowup
 {
-  public:
-  	dGcGblowup ();
+public:
+  	
+    dGcGblowup ();
     void run ();
 
     // PDE co-efficients
@@ -86,10 +87,11 @@ class dGcGblowup
 	double delta_residual = 0; // The residual arising from the numerical solution of the delta equation
 
 	// Error estimator thresholds
-	double temporal_refinement_threshold = 0.5*0.25*0.25*0.25*0.01; // The temporal refinement threshold
+	double temporal_refinement_threshold = 0.25*0.25*0.01; // The temporal refinement threshold
 	double delta_residual_threshold = 1e-04; // The threshold for the delta equation residual above which we consider the delta equation as having no root
 
-  private:
+private:
+
     void setup_system_full ();
 	void setup_system_time ();
 	void create_system_matrix ();
@@ -131,8 +133,7 @@ class dGcGblowup
 	Vector<double> old_old_solution_plus;
 };
 
-template <int dim>
-dGcGblowup<dim>::dGcGblowup ()
+template <int dim> dGcGblowup<dim>::dGcGblowup ()
                 :
 				dof_handler_space (triangulation_space), old_dof_handler_space (old_triangulation_space), old_old_dof_handler_space (old_old_triangulation_space),
 				dof_handler_time (triangulation_time), old_dof_handler_time (old_triangulation_time),
@@ -142,8 +143,7 @@ dGcGblowup<dim>::dGcGblowup ()
 				fe (fe_space, time_degree + 1), old_fe (old_fe_space, time_degree + 1)
 {}
 
-template <int dim>
-void dGcGblowup<dim>::setup_system_full () // Initialise all the vectors and matrices
+template <int dim> void dGcGblowup<dim>::setup_system_full () // Initialise all the vectors and matrices
 {
 dof_handler_space.distribute_dofs (fe_space);
 dof_handler.distribute_dofs (fe);
@@ -194,8 +194,7 @@ system_matrix.reinit (sparsity_pattern);
 create_system_matrix ();
 }
 
-template <int dim>
-void dGcGblowup<dim>::create_system_matrix ()
+template <int dim> void dGcGblowup<dim>::create_system_matrix ()
 {
 const QGauss<dim> quadrature_formula_space (space_degree + 1);
 
@@ -216,52 +215,51 @@ if (time_degree > 0) {create_time_derivative_matrix (fe_time, time_derivative_ma
 typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active(), final_space_cell = dof_handler_space.end();
 typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active();
 
-for (; space_cell != final_space_cell; ++cell, ++space_cell)
-{
-local_mass_matrix = 0; local_laplace_matrix = 0;
-fe_values_space.reinit(space_cell);
+    for (; space_cell != final_space_cell; ++cell, ++space_cell)
+    {
+    local_mass_matrix = 0; local_laplace_matrix = 0;
+    fe_values_space.reinit(space_cell);
+	cell->get_dof_indices (local_dof_indices);
 
-for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
-   for (unsigned int j = 0; j < i + 1; ++j)
-   {
-      for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-	  {
-	  local_mass_matrix(i,j) += fe_values_space.shape_value(i,q_space)*fe_values_space.shape_value(j,q_space)*fe_values_space.JxW(q_space);
-	  local_laplace_matrix(i,j) += a*fe_values_space.shape_grad(i,q_space)*fe_values_space.shape_grad(j,q_space)*fe_values_space.JxW(q_space);
-	  }
-   local_mass_matrix(j,i) = local_mass_matrix(i,j); local_laplace_matrix(j,i) = local_laplace_matrix(i,j);
-   }
+        for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+            for (unsigned int j = 0; j < i + 1; ++j)
+            {
+                for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+	            {
+	            local_mass_matrix(i,j) += fe_values_space.shape_value(i,q_space)*fe_values_space.shape_value(j,q_space)*fe_values_space.JxW(q_space);
+	            local_laplace_matrix(i,j) += a*fe_values_space.shape_grad(i,q_space)*fe_values_space.shape_grad(j,q_space)*fe_values_space.JxW(q_space);
+	            }
 
-cell->get_dof_indices (local_dof_indices);
+            local_mass_matrix(j,i) = local_mass_matrix(i,j); local_laplace_matrix(j,i) = local_laplace_matrix(i,j);
+            }
 
-for (unsigned int k = 0; k < dofs_per_cell; ++k)
-   {
-   unsigned int comp_s_k = fe.system_to_component_index(k).second;
-   unsigned int comp_t_k = fe.system_to_component_index(k).first;
+        for (unsigned int k = 0; k < dofs_per_cell; ++k)
+        {
+        unsigned int comp_s_k = fe.system_to_component_index(k).second;
+        unsigned int comp_t_k = fe.system_to_component_index(k).first;
 
-   for (unsigned int l = 0; l < dofs_per_cell; ++l)
-   {
-   unsigned int comp_s_l = fe.system_to_component_index(l).second;
-   unsigned int comp_t_l = fe.system_to_component_index(l).first;
+            for (unsigned int l = 0; l < dofs_per_cell; ++l)
+            {
+            unsigned int comp_s_l = fe.system_to_component_index(l).second;
+            unsigned int comp_t_l = fe.system_to_component_index(l).first;
 
-   double value = 0;
+            double value = 0;
 
-   switch(time_degree)
-   {
-   case 0: value = temporal_mass_matrix(comp_t_k, comp_t_l)*local_laplace_matrix(comp_s_k, comp_s_l); break;
-   default: value = time_derivative_matrix(comp_t_k, comp_t_l)*local_mass_matrix(comp_s_k, comp_s_l) + temporal_mass_matrix(comp_t_k, comp_t_l)*local_laplace_matrix(comp_s_k, comp_s_l);
-   }
+            switch(time_degree)
+            {
+            case 0: value = temporal_mass_matrix(comp_t_k, comp_t_l)*local_laplace_matrix(comp_s_k, comp_s_l); break;
+            default: value = time_derivative_matrix(comp_t_k, comp_t_l)*local_mass_matrix(comp_s_k, comp_s_l) + temporal_mass_matrix(comp_t_k, comp_t_l)*local_laplace_matrix(comp_s_k, comp_s_l);
+            }
 
-   if ((comp_t_k == 0) && (comp_t_l == 0)) {value += local_mass_matrix(comp_s_k, comp_s_l);}
+            if ((comp_t_k == 0) && (comp_t_l == 0)) {value += local_mass_matrix (comp_s_k, comp_s_l);}
 
-   system_matrix.add(local_dof_indices[k], local_dof_indices[l], value);
-   }
-   }
+            system_matrix.add (local_dof_indices[k], local_dof_indices[l], value);
+            }
+        }
+    }
 }
-}
 
-template <int dim>
-void dGcGblowup<dim>::create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &temporal_mass_matrix) const
+template <int dim> void dGcGblowup<dim>::create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &temporal_mass_matrix) const
 {
 const QGauss<1> quadrature_formula_time (time_degree + 1);
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_JxW_values);
@@ -271,19 +269,19 @@ const unsigned int no_q_time = quadrature_formula_time.size();
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active();
 fe_values_time.reinit (time_cell);
 
-for (unsigned int r = 0; r < time_degree + 1; ++r)
-   for (unsigned int s = 0; s < r + 1; ++s)
-   {
-      for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-      {
-	  temporal_mass_matrix(r,s) += fe_values_time.shape_value(r,q_time)*fe_values_time.shape_value(s,q_time)*fe_values_time.JxW(q_time);
-      }
-   temporal_mass_matrix(s,r) = temporal_mass_matrix(r,s);
-   }
+    for (unsigned int r = 0; r < time_degree + 1; ++r)
+        for (unsigned int s = 0; s < r + 1; ++s)
+        {
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+            {
+	        temporal_mass_matrix(r,s) += fe_values_time.shape_value(r,q_time)*fe_values_time.shape_value(s,q_time)*fe_values_time.JxW(q_time);
+            }
+   
+		temporal_mass_matrix(s,r) = temporal_mass_matrix(r,s);
+        }
 }
 
-template <int dim>
-void dGcGblowup<dim>::create_time_derivative_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &time_derivative_matrix) const
+template <int dim> void dGcGblowup<dim>::create_time_derivative_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &time_derivative_matrix) const
 {
 const QGauss<1> quadrature_formula_time (time_degree + 1);
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
@@ -293,18 +291,15 @@ const unsigned int no_q_time = quadrature_formula_time.size();
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active();
 fe_values_time.reinit (time_cell);
 
-for (unsigned int r = 0; r < time_degree + 1; ++r)
-   for (unsigned int s = 0; s < time_degree + 1; ++s)
-   {
-      for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-      {
-	  time_derivative_matrix(r,s) += fe_values_time.shape_value(r,q_time)*fe_values_time.shape_grad(s,q_time)[0]*fe_values_time.JxW(q_time);
-      }
-   }
+    for (unsigned int r = 0; r < time_degree + 1; ++r)
+        for (unsigned int s = 0; s < time_degree + 1; ++s)
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+            {
+	        time_derivative_matrix(r,s) += fe_values_time.shape_value(r,q_time)*fe_values_time.shape_grad(s,q_time)[0]*fe_values_time.JxW(q_time);
+            }
 }
 
-template <int dim>
-void dGcGblowup<dim>::assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol)
+template <int dim> void dGcGblowup<dim>::assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol)
 {
 deallog << "Calculating the numerical solution via Picard iteration..." << std::endl;
 
@@ -333,121 +328,106 @@ fe_values_time.reinit (time_cell);
 
 unsigned int iteration_number = 1; double residual = 0; double max = solution.linfty_norm();
 
-for (; iteration_number < max_iterations; ++iteration_number)
-{
-typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active();
-typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active(), final_cell = dof_handler.end();
+    for (; iteration_number < max_iterations; ++iteration_number)
+    {
+    typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active();
+    typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active(), final_cell = dof_handler.end();
 
-residual_vector = solution;
+    residual_vector = solution;
 
-right_hand_side = 0;
+    right_hand_side = 0;
 
-for (; cell != final_cell; ++cell, ++space_cell)
-{
-cell_rhs = 0;
-fe_values_space.reinit (space_cell);
+        for (; cell != final_cell; ++cell, ++space_cell)
+        {
+        cell_rhs = 0;
+        fe_values_space.reinit (space_cell);
 
-cell->get_dof_indices (local_dof_indices);
+        cell->get_dof_indices (local_dof_indices);
 
-fe_values_space.get_function_values (old_solution_plus, old_solution_plus_values);
-get_spacetime_function_values (solution, fe_values_space, fe_values_time, local_dof_indices, nonlinearity_values);
+        fe_values_space.get_function_values (old_solution_plus, old_solution_plus_values);
+        get_spacetime_function_values (solution, fe_values_space, fe_values_time, local_dof_indices, nonlinearity_values);
 
-   for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-      for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-      {
-      nonlinearity_values(q_space + q_time*no_q_space) *= nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
-      }
+            for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+                for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+                {
+                nonlinearity_values(q_space + q_time*no_q_space) *= nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
+                } 
 
-   for (unsigned int i = 0; i < dofs_per_cell; ++i)
-   {
-   unsigned int comp_s_i = fe.system_to_component_index(i).second;
-   unsigned int comp_t_i = fe.system_to_component_index(i).first;
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            {
+            unsigned int comp_s_i = fe.system_to_component_index(i).second;
+            unsigned int comp_t_i = fe.system_to_component_index(i).first;
 
-      for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-      {
-         for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-	     {
-	     cell_rhs(i) += nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_time.shape_value(comp_t_i,q_time);
- 	     }
+                for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+                {
+                    for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+	                {
+	                cell_rhs(i) += nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_time.shape_value(comp_t_i,q_time);
+ 	                }
 
-      if (comp_t_i == 0) {cell_rhs(i) += old_solution_plus_values[q_space]*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_space.JxW(q_space);}
-      }
+                if (comp_t_i == 0) {cell_rhs(i) += old_solution_plus_values[q_space]*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_space.JxW(q_space);}
+                }
 
-   right_hand_side(local_dof_indices[i]) += cell_rhs(i);
-   }
+            right_hand_side(local_dof_indices[i]) += cell_rhs(i);
+            }
+        }
+
+    SolverBicgstab<>::AdditionalData data;
+    data.exact_residual = false;
+
+    SolverControl solver_control (1000, max*sqrt(max)*rel_tol*sqrt(rel_tol), false, false);
+    SolverBicgstab<> solver (solver_control, data);
+
+    constraints.condense (system_matrix, right_hand_side);
+
+    SparseILU<double> ilu;
+    ilu.initialize (system_matrix);
+    solver.solve (system_matrix, solution, right_hand_side, ilu);
+
+    constraints.distribute (solution);
+
+    residual_vector.add (-1,solution);
+    residual = residual_vector.l2_norm();
+
+    if (residual < max*rel_tol) {break;}
+    }
+
+switch(time_degree) {case 0: solution_plus = solution; break; default: reorder_solution_vector (solution, reordered_solution); solution_plus = reordered_solution.block(time_degree);}
+
+if (iteration_number == max_iterations) {deallog << "...converged in the maximum number of allowed iterations (" << max_iterations << ") with a residual of " << residual << std::endl;} else {deallog << "...converged in " << iteration_number << " iterations with a residual of " << residual << std::endl;}
 }
 
-SolverBicgstab<>::AdditionalData data;
-data.exact_residual = false;
-
-SolverControl solver_control (1000, max*sqrt(max)*rel_tol*sqrt(rel_tol), false, false);
-SolverBicgstab<> solver (solver_control, data);
-
-constraints.condense (system_matrix, right_hand_side);
-
-SparseILU<double> ilu;
-ilu.initialize (system_matrix);
-solver.solve (system_matrix, solution, right_hand_side, ilu);
-
-constraints.distribute (solution);
-
-residual_vector.add (-1,solution);
-residual = residual_vector.l2_norm();
-
-if (residual < max*rel_tol) {goto endloop;}
-}
-endloop:
-
-switch(time_degree)
+template <int dim> void dGcGblowup<dim>::output_solution () const
 {
-case 0: solution_plus = solution; break;
-default: reorder_solution_vector (solution, reordered_solution); solution_plus = reordered_solution.block(time_degree); 
-}
-
-if (iteration_number == max_iterations) {deallog << "...converged in the maximum number of allowed iterations (" << max_iterations << ") with a residual of " << residual << std::endl;}
-else {deallog << "...converged in " << iteration_number << " iterations with a residual of " << residual << std::endl;}
-}
-
-template <int dim>
-void dGcGblowup<dim>::output_solution () const
-{
-DataOut<dim> data_out;
-data_out.attach_dof_handler (dof_handler_space);
-data_out.add_data_vector (solution_plus, "u_h");
-data_out.build_patches ();
+DataOut<dim> data_out; data_out.attach_dof_handler (dof_handler_space); data_out.add_data_vector (solution_plus, "u_h"); data_out.build_patches ();
 
 const std::string filename = "solution-" + Utilities::int_to_string (timestep_number, 5) + ".gnuplot";
 
-std::ofstream gnuplot_output (filename.c_str());
-data_out.write_gnuplot (gnuplot_output);
+std::ofstream gnuplot_output (filename.c_str()); data_out.write_gnuplot (gnuplot_output);
 }
 
-template<int dim>
-void dGcGblowup<dim>::get_spacetime_function_values (const Vector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices, Vector<double> &spacetime_fe_function_values) const
+template<int dim> void dGcGblowup<dim>::get_spacetime_function_values (const Vector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices, Vector<double> &spacetime_fe_function_values) const
 {
-const unsigned int no_q_space = fe_values_space.get_quadrature().size();
-const unsigned int no_q_time = fe_values_time.get_quadrature().size();
+const unsigned int no_q_space = fe_values_space.get_quadrature().size(); const unsigned int no_q_time = fe_values_time.get_quadrature().size();
 const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
 spacetime_fe_function_values = 0;
 
-for (unsigned int i = 0; i < dofs_per_cell; ++i)
-{
-const unsigned int comp_s_i = fe.system_to_component_index(i).second;
-const unsigned int comp_t_i = fe.system_to_component_index(i).first;
+    for (unsigned int i = 0; i < dofs_per_cell; ++i)
+    {
+    const unsigned int comp_s_i = fe.system_to_component_index(i).second; const unsigned int comp_t_i = fe.system_to_component_index(i).first;
 
-double fe_value_i = spacetime_fe_function(local_dof_indices[i]);
+    double fe_value_i = spacetime_fe_function(local_dof_indices[i]);
 
-   for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-      for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-      {
-      spacetime_fe_function_values(q_space+q_time*no_q_space) += fe_value_i*fe_values_space.shape_value(comp_s_i, q_space)*fe_values_time.shape_value(comp_t_i, q_time);
-      }
+        for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+            {
+            spacetime_fe_function_values (q_space+q_time*no_q_space) += fe_value_i*fe_values_space.shape_value(comp_s_i, q_space)*fe_values_time.shape_value(comp_t_i, q_time);
+            }
+    }
 }
-}
 
-template <int dim>
-void dGcGblowup<dim>::reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function) const
+template <int dim> void dGcGblowup<dim>::reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function) const
 {
 const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
@@ -457,23 +437,22 @@ std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active();
 typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active(), final_cell = dof_handler.end();
 
-for (; cell != final_cell; ++cell, ++space_cell)
-{
-space_cell->get_dof_indices (local_dof_indices_space);
-cell->get_dof_indices (local_dof_indices);
+    for (; cell != final_cell; ++cell, ++space_cell)
+    {
+    space_cell->get_dof_indices (local_dof_indices_space);
+    cell->get_dof_indices (local_dof_indices);
 
-   for (unsigned int i = 0; i < dofs_per_cell; ++i)
-   {
-   const unsigned int comp_s_i = fe.system_to_component_index(i).second;
-   const unsigned int comp_t_i = fe.system_to_component_index(i).first;
+       for (unsigned int i = 0; i < dofs_per_cell; ++i)
+       {
+       const unsigned int comp_s_i = fe.system_to_component_index(i).second;
+       const unsigned int comp_t_i = fe.system_to_component_index(i).first;
 
-   reordered_spacetime_fe_function.block(comp_t_i)(local_dof_indices_space[comp_s_i]) = spacetime_fe_function(local_dof_indices[i]);
-   }
+       reordered_spacetime_fe_function.block(comp_t_i)(local_dof_indices_space[comp_s_i]) = spacetime_fe_function(local_dof_indices[i]);
+       }
+    }
 }
-}
 
-template <int dim>
-void dGcGblowup<dim>::extend_to_constant_in_time_function (Vector<double> &fe_function, Vector<double> &spacetime_fe_function) const
+template <int dim> void dGcGblowup<dim>::extend_to_constant_in_time_function (Vector<double> &fe_function, Vector<double> &spacetime_fe_function) const
 {
 const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
@@ -483,22 +462,21 @@ std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active();
 typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active(), final_cell = dof_handler.end();
 
-for (; cell != final_cell; ++cell, ++space_cell)
-{
-space_cell->get_dof_indices (local_dof_indices_space);
-cell->get_dof_indices (local_dof_indices);
+    for (; cell != final_cell; ++cell, ++space_cell)
+    {
+    space_cell->get_dof_indices (local_dof_indices_space);
+    cell->get_dof_indices (local_dof_indices);
 
-   for (unsigned int i = 0; i < dofs_per_cell; ++i)
-   {
-   const unsigned int comp_s_i = fe.system_to_component_index(i).second;
+        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+        {
+        const unsigned int comp_s_i = fe.system_to_component_index(i).second;
 
-   spacetime_fe_function(local_dof_indices[i]) = fe_function(local_dof_indices_space[comp_s_i]);
-   }
+        spacetime_fe_function(local_dof_indices[i]) = fe_function(local_dof_indices_space[comp_s_i]);
+       }
+    }
 }
-}
 
-template <int dim>
-void dGcGblowup<dim>::compute_Q_values (const unsigned int &degree, const double &point, double &Q_value, double &Q_derivative_value, double &Q_second_derivative_value) const
+template <int dim> void dGcGblowup<dim>::compute_Q_values (const unsigned int &degree, const double &point, double &Q_value, double &Q_derivative_value, double &Q_second_derivative_value) const
 {
 switch(degree)
 {
@@ -517,8 +495,7 @@ if (n == degree) {Q_value = -value; Q_derivative_value = -derivative_value; Q_se
 Q_value *= 0.5*std::pow(-1, degree); Q_derivative_value *= std::pow(-1, degree); Q_second_derivative_value *= 2*std::pow(-1, degree);
 }
 
-template <int dim>
-void dGcGblowup<dim>::compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time)
+template <int dim> void dGcGblowup<dim>::compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time)
 {
 const QGaussLobatto<dim> quadrature_formula_space (no_q_space_x); const QGaussLobatto<dim-1> quadrature_formula_space_face (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
 
@@ -542,13 +519,13 @@ BlockVector<double> space_derivative_estimator_values (no_q_time);
 BlockVector<double> reordered_solution_at_temporal_quadrature_points (no_q_time);
 BlockVector<double> reordered_solution_time_derivative_at_temporal_quadrature_points (no_q_time);
 
-for (unsigned int i = 0; i < no_q_time; ++i)
-{
-space_estimator_values.block(i).reinit (no_of_cells);
-space_derivative_estimator_values.block(i).reinit (no_of_cells);
-reordered_solution_at_temporal_quadrature_points.block(i).reinit (no_of_space_dofs);
-reordered_solution_time_derivative_at_temporal_quadrature_points.block(i).reinit (no_of_space_dofs);
-}
+    for (unsigned int i = 0; i < no_q_time; ++i)
+    {
+    space_estimator_values.block(i).reinit (no_of_cells);
+    space_derivative_estimator_values.block(i).reinit (no_of_cells);
+    reordered_solution_at_temporal_quadrature_points.block(i).reinit (no_of_space_dofs);
+    reordered_solution_time_derivative_at_temporal_quadrature_points.block(i).reinit (no_of_space_dofs);
+    }
 
 space_estimator_values.collect_sizes ();
 space_derivative_estimator_values.collect_sizes ();
@@ -591,302 +568,233 @@ else {create_temporal_mass_matrix (old_fe_time, old_temporal_mass_matrix_inv); o
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active(); typename DoFHandler<1>::active_cell_iterator old_time_cell = old_dof_handler_time.begin_active();
 fe_values_time.reinit (time_cell); old_fe_values_time.reinit (old_time_cell);
 
-for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-{
-compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values(q_time), Q_derivative_values(q_time), Q_second_derivative_values(q_time));
-}
+    for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+    {
+    compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values(q_time), Q_derivative_values(q_time), Q_second_derivative_values(q_time));
+    }
 
 typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (), final_cell = dof_handler.end ();
 typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active ();
 
 if (time_degree > 0)
 {
-for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-   for (unsigned int i = 0; i < no_of_space_dofs; ++i)
-	  for (unsigned int j = 0; j < time_degree + 1; ++j)
-      {
-      reordered_solution_at_temporal_quadrature_points.block(q_time)(i) += reordered_solution.block(j)(i)*fe_values_time.shape_value(j, q_time); reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time)(i) += reordered_solution.block(j)(i)*fe_values_time.shape_grad(j, q_time)[0];
-	  }
+    for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+        for (unsigned int i = 0; i < no_of_space_dofs; ++i)
+	        for (unsigned int j = 0; j < time_degree + 1; ++j)
+            {
+            reordered_solution_at_temporal_quadrature_points.block(q_time)(i) += reordered_solution.block(j)(i)*fe_values_time.shape_value(j, q_time); reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time)(i) += reordered_solution.block(j)(i)*fe_values_time.shape_grad(j, q_time)[0];
+	       }
 }
 
 double h = 0; double h_min = GridTools::minimal_cell_diameter (triangulation_space); double ell_h = log(2 + 1/h_min); double C_cell = 0; double C_edge = 0;
 etaS = 0; double space_estimator_jump_value = 0; double nonlinearity_value = 0;
 
-for (; cell != final_cell; ++cell, ++space_cell)
-{
-fe_values_space.reinit (space_cell);
+    for (; cell != final_cell; ++cell, ++space_cell)
+    {
+    fe_values_space.reinit (space_cell);
 
-const unsigned int cell_no = cell->active_cell_index (); 
-cell->get_dof_indices (local_dof_indices);
-h = cell->diameter (); C_cell = fmin(1/a, h*h*ell_h/a); C_edge = fmin(1, h*ell_h);
+    const unsigned int cell_no = cell->active_cell_index (); 
+    cell->get_dof_indices (local_dof_indices);
+    h = cell->diameter(); C_cell = fmin(1/a, h*h*ell_h/a); C_edge = fmin(1, h*ell_h);
 
-estimator_values = 0; derivative_estimator_values = 0;
+    estimator_values = 0; derivative_estimator_values = 0;
 
-std::vector<double> solution_values_alt (no_q_space); std::vector<Tensor<2,dim> > solution_hessian_values (no_q_space);
+    std::vector<double> solution_values_alt (no_q_space); std::vector<Tensor<2,dim> > solution_hessian_values (no_q_space);
 
-switch(time_degree)
-{	
-case 0:
-fe_values_space.get_function_values (solution, solution_values_alt); if (space_degree > 1) {fe_values_space.get_function_hessians (solution, solution_hessian_values);}
+    switch(time_degree)
+    {	
+    case 0: fe_values_space.get_function_values (solution, solution_values_alt); if (space_degree > 1) {fe_values_space.get_function_hessians (solution, solution_hessian_values);}
 
-   for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-      for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-      {
-      solution_values (q_space+q_time*no_q_space) = solution_values_alt[q_space]; if (space_degree > 1) {solution_laplacian_values (q_space+q_time*no_q_space) = a*trace(solution_hessian_values[q_space]);}
-      }
+        for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+            for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+            {
+            solution_values (q_space+q_time*no_q_space) = solution_values_alt[q_space]; if (space_degree > 1) {solution_laplacian_values (q_space+q_time*no_q_space) = a*trace(solution_hessian_values[q_space]);}
+            }
 
-break;
+    break;
 
-default:
-std::vector<double> solution_time_derivative_values_alt (no_q_space); std::vector<Tensor<2,dim> > solution_time_derivative_hessian_values (no_q_space);
+    default: std::vector<double> solution_time_derivative_values_alt (no_q_space); std::vector<Tensor<2,dim> > solution_time_derivative_hessian_values (no_q_space);
 
-   for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-   {
-   fe_values_space.get_function_values (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_values_alt); fe_values_space.get_function_values (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_values_alt);
-   if (space_degree > 1)  {fe_values_space.get_function_hessians (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_hessian_values);  fe_values_space.get_function_hessians (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_hessian_values); }
+        for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+        {
+        fe_values_space.get_function_values (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_values_alt); fe_values_space.get_function_values (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_values_alt);
+        if (space_degree > 1)  {fe_values_space.get_function_hessians (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_hessian_values); fe_values_space.get_function_hessians (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_hessian_values); }
 
-      for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-	  {
-      solution_values (q_space+q_time*no_q_space) = solution_values_alt[q_space]; solution_time_derivative_values (q_space+q_time*no_q_space) = solution_time_derivative_values_alt[q_space];
-      if (space_degree > 1) {solution_laplacian_values (q_space+q_time*no_q_space) = a*trace(solution_hessian_values[q_space]); solution_time_derivative_laplacian_values(q_space+q_time*no_q_space) = a*trace(solution_time_derivative_hessian_values[q_space]);}
-      }
-   }
-}
+            for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+	        {
+            solution_values (q_space+q_time*no_q_space) = solution_values_alt[q_space]; solution_time_derivative_values (q_space+q_time*no_q_space) = solution_time_derivative_values_alt[q_space];
+            if (space_degree > 1) {solution_laplacian_values (q_space+q_time*no_q_space) = a*trace(solution_hessian_values[q_space]); solution_time_derivative_laplacian_values(q_space+q_time*no_q_space) = a*trace(solution_time_derivative_hessian_values[q_space]);}
+            }
+        }
+    }
 
-switch(timestep_number) {case 1: fe_values_space.get_function_values (old_solution_plus, old_old_solution_plus_values); for (unsigned int q_space = 0; q_space < no_q_space; ++q_space) {old_solution_values (q_space+(no_q_time-1)*no_q_space) = old_old_solution_plus_values[q_space];} break;
-default: get_spacetime_function_values (old_solution, fe_values_space, old_fe_values_time, local_dof_indices, old_solution_values); fe_values_space.get_function_values (old_old_solution_plus, old_old_solution_plus_values);}
+    switch(timestep_number) {case 1: fe_values_space.get_function_values (old_solution_plus, old_old_solution_plus_values); for (unsigned int q_space = 0; q_space < no_q_space; ++q_space) {old_solution_values (q_space+(no_q_time-1)*no_q_space) = old_old_solution_plus_values[q_space];} break;
+    default: get_spacetime_function_values (old_solution, fe_values_space, old_fe_values_time, local_dof_indices, old_solution_values); fe_values_space.get_function_values (old_old_solution_plus, old_old_solution_plus_values);}
 
-   for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-   {
-   space_estimator_jump_value = 0; 
+        for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+        {
+        space_estimator_jump_value = 0; 
 
-   if (timestep_number > 1)
-   {
-   space_estimator_jump_value = (1/dt_old)*Q_derivative_values(no_q_time-1)*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
+        if (timestep_number > 1)
+        {
+        space_estimator_jump_value = (1/dt_old)*Q_derivative_values(no_q_time-1)*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
 
-   switch (time_degree) {case 0: space_estimator_jump_value -= old_solution_values(q_space)*old_solution_values(q_space); break;
-   default:
+        switch (time_degree) {case 0: space_estimator_jump_value -= old_solution_values(q_space)*old_solution_values(q_space); break;
+        default: L2_projection_rhs = 0;
 
-   L2_projection_rhs = 0;
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+            {
+            nonlinearity_value = old_solution_values(q_space+q_time*no_q_space)*old_solution_values(q_space+q_time*no_q_space)*old_fe_values_time.JxW(q_time);
+  
+	            for (unsigned int i = 0; i < time_degree + 1; ++i)
+                {
+                L2_projection_rhs(i) += nonlinearity_value*old_fe_values_time.shape_value(i, q_time);
+                }
+            }
 
-      for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-      {
-      nonlinearity_value = old_solution_values(q_space+q_time*no_q_space)*old_solution_values(q_space+q_time*no_q_space)*old_fe_values_time.JxW(q_time);
+	        for (unsigned int i = 0; i < time_degree + 1; ++i)
+            {
+            space_estimator_jump_value -= old_temporal_mass_matrix_inv(time_degree, i)*L2_projection_rhs(i);
+            }
+        }
 
-	     for (unsigned int i = 0; i < time_degree + 1; ++i)
-         {
-         L2_projection_rhs(i) += nonlinearity_value*old_fe_values_time.shape_value(i, q_time);
-         }
-      }
+        if (time_degree > 0 || space_degree > 1)
+        {
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            {
+            const unsigned int comp_s_i = fe.system_to_component_index(i).second;
+            const unsigned int comp_t_i = fe.system_to_component_index(i).first;
 
-	  for (unsigned int i = 0; i < time_degree + 1; ++i)
-      {
-      space_estimator_jump_value -= old_temporal_mass_matrix_inv(time_degree, i)*L2_projection_rhs(i);
-      }
-   }
+            if (time_degree > 0) {space_estimator_jump_value += old_solution(local_dof_indices[i])*fe_values_space.shape_value(comp_s_i, q_space)*old_fe_values_time.shape_grad(comp_t_i, no_q_time - 1)[0];}
+	        if (space_degree > 1) {space_estimator_jump_value -= old_solution(local_dof_indices[i])*a*trace(fe_values_space.shape_hessian(comp_s_i, q_space))*old_fe_values_time.shape_value(comp_t_i, no_q_time - 1);}
+            }
+        }
+        }
 
-   if (time_degree > 0 || space_degree > 1)
-   {
-      for (unsigned int i = 0; i < dofs_per_cell; ++i)
-      {
-      const unsigned int comp_s_i = fe.system_to_component_index(i).second;
-      const unsigned int comp_t_i = fe.system_to_component_index(i).first;
+        switch(time_degree) {case 0: for (unsigned int q_time = 0; q_time < no_q_time; ++q_time) {L2_projection_f_values[q_time] = solution_values(q_space)*solution_values(q_space);} break;
+        default: L2_projection_rhs = 0;
 
-      if (time_degree > 0) {space_estimator_jump_value += old_solution(local_dof_indices[i])*fe_values_space.shape_value(comp_s_i, q_space)*old_fe_values_time.shape_grad(comp_t_i, no_q_time - 1)[0];}
-	  if (space_degree > 1) {space_estimator_jump_value -= old_solution(local_dof_indices[i])*a*trace(fe_values_space.shape_hessian(comp_s_i, q_space))*old_fe_values_time.shape_value(comp_t_i, no_q_time - 1);}
-      }
-   }
-   }
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+            {
+            nonlinearity_value = solution_values(q_space+q_time*no_q_space)*solution_values(q_space+q_time*no_q_space)*fe_values_time.JxW(q_time);
 
-   switch(time_degree) {case 0: for (unsigned int q_time = 0; q_time < no_q_time; ++q_time) {L2_projection_f_values[q_time] = solution_values(q_space)*solution_values(q_space);} break;
+                for (unsigned int i = 0; i < time_degree + 1; ++i)
+                {
+                L2_projection_rhs(i) += nonlinearity_value*fe_values_time.shape_value(i, q_time);
+                }
+            }
 
-   default:
+        temporal_mass_matrix_inv.vmult (L2_projection_f, L2_projection_rhs);
+        fe_values_time.get_function_values (L2_projection_f, L2_projection_f_values);
+        fe_values_time.get_function_gradients (L2_projection_f, L2_projection_f_time_derivative_values);
+        }
 
-   L2_projection_rhs = 0;
+        if (time_degree > 1)
+        {
+        solution_second_time_derivative_values = 0;
 
-      for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-      {
-      nonlinearity_value = solution_values(q_space+q_time*no_q_space)*solution_values(q_space+q_time*no_q_space)*fe_values_time.JxW(q_time);
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+   	            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                {
+                const unsigned int comp_s_i = fe.system_to_component_index(i).second;
+                const unsigned int comp_t_i = fe.system_to_component_index(i).first;
 
-         for (unsigned int i = 0; i < time_degree + 1; ++i)
-         {
-         L2_projection_rhs(i) += nonlinearity_value*fe_values_time.shape_value(i, q_time);
-         }
-      }
+   	            solution_second_time_derivative_values(q_time) += solution(local_dof_indices[i])*fe_values_space.shape_value(comp_s_i, q_space)*fe_values_time.shape_hessian(comp_t_i, q_time)[0][0];
+		        }
+        }
 
-   temporal_mass_matrix_inv.vmult (L2_projection_f, L2_projection_rhs);
-   fe_values_time.get_function_values (L2_projection_f, L2_projection_f_values);
-   fe_values_time.get_function_gradients (L2_projection_f, L2_projection_f_time_derivative_values);
-   }
+        space_estimator_jump_value += L2_projection_f_values[0] - solution_time_derivative_values(q_space) - (1/dt)*Q_derivative_values(0)*(solution_values(q_space) - old_solution_values(q_space+(no_q_time-1)*no_q_space)) + solution_laplacian_values(q_space);
 
-   if (time_degree > 1)
-   {
-   solution_second_time_derivative_values = 0;
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+	        {
+	        estimator_values(q_time) = fmax(estimator_values(q_time), fabs(L2_projection_f_values[q_time] - solution_time_derivative_values(q_space+q_time*no_q_space) - (1/dt)*Q_derivative_values(q_time)*(solution_values(q_space) - old_solution_values(q_space+(no_q_time-1)*no_q_space)) + solution_laplacian_values(q_space+q_time*no_q_space) + Q_values(q_time)*space_estimator_jump_value)); 
+	        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(L2_projection_f_time_derivative_values[q_time][0] - solution_second_time_derivative_values(q_time) - (1/dt)*(1/dt)*Q_second_derivative_values(q_time)*(solution_values(q_space) - old_solution_values(q_space+(no_q_time-1)*no_q_space)) + solution_time_derivative_laplacian_values(q_space+q_time*no_q_space) + (1/dt)*Q_derivative_values(q_time)*space_estimator_jump_value));
+	        }
+        }
 
-      for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-   	     for (unsigned int i = 0; i < dofs_per_cell; ++i)
-         {
-         const unsigned int comp_s_i = fe.system_to_component_index(i).second;
-         const unsigned int comp_t_i = fe.system_to_component_index(i).first;
+        for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+        {
+        space_estimator_values.block(q_time)(cell_no) = C_cell*estimator_values(q_time);
+        space_derivative_estimator_values.block(q_time)(cell_no) = C_cell*derivative_estimator_values(q_time);
+        }
 
-	     solution_second_time_derivative_values(q_time) += solution(local_dof_indices[i])*fe_values_space.shape_value(comp_s_i, q_space)*fe_values_time.shape_hessian(comp_t_i, q_time)[0][0];
-		 }
-   }
+    estimator_values = 0; derivative_estimator_values = 0;
 
-   space_estimator_jump_value += L2_projection_f_values[0] - solution_time_derivative_values(q_space) - (1/dt)*Q_derivative_values(0)*(solution_values(q_space) - old_solution_values(q_space+(no_q_time-1)*no_q_space)) + solution_laplacian_values(q_space);
-
-      for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-	  {
-	  estimator_values(q_time) = fmax(estimator_values(q_time), fabs(L2_projection_f_values[q_time] - solution_time_derivative_values(q_space+q_time*no_q_space) - (1/dt)*Q_derivative_values(q_time)*(solution_values(q_space) - old_solution_values(q_space+(no_q_time-1)*no_q_space)) + solution_laplacian_values(q_space+q_time*no_q_space) + Q_values(q_time)*space_estimator_jump_value)); 
-	  derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(L2_projection_f_time_derivative_values[q_time][0] - solution_second_time_derivative_values(q_time) - (1/dt)*(1/dt)*Q_second_derivative_values(q_time)*(solution_values(q_space) - old_solution_values(q_space+(no_q_time-1)*no_q_space)) + solution_time_derivative_laplacian_values(q_space+q_time*no_q_space) + (1/dt)*Q_derivative_values(q_time)*space_estimator_jump_value));
-	  }
-   }
-
-   for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-   {
-   space_estimator_values.block(q_time)(cell_no) = C_cell*estimator_values(q_time);
-   space_derivative_estimator_values.block(q_time)(cell_no) = C_cell*derivative_estimator_values(q_time);
-   }
-
-estimator_values = 0; derivative_estimator_values = 0;
-
-   for (unsigned int face = 0; face < 4; ++face)
-   {
-   if (space_cell->face(face)->at_boundary())
-   {}
-   else
-   {
-      if (space_cell->face(face)->has_children() == false)
-      {
-	     if (space_cell->neighbor_is_coarser(face) == false)
-         {
-		 typename DoFHandler<dim>::active_cell_iterator space_cell_neighbor = space_cell->neighbor (face);
-		 unsigned int neighbor_face_no = space_cell->neighbor_face_no (face);
+        for (unsigned int face = 0; face < 4; ++face)
+        {
+        if (space_cell->face(face)->at_boundary() == false && space_cell->face(face)->has_children() == false && space_cell->neighbor_is_coarser(face) == false)
+        {
+		typename DoFHandler<dim>::active_cell_iterator space_cell_neighbor = space_cell->neighbor (face);
+		unsigned int neighbor_face_no = space_cell->neighbor_face_no (face);
          
-	     fe_values_space_face.reinit (space_cell, face);
-         fe_values_space_face_neighbor.reinit (space_cell_neighbor, neighbor_face_no);
-		 const std::vector<Tensor<1,dim> > &normals = fe_values_space_face_neighbor.get_normal_vectors();
+	    fe_values_space_face.reinit (space_cell, face);
+        fe_values_space_face_neighbor.reinit (space_cell_neighbor, neighbor_face_no);
+		const std::vector<Tensor<1,dim>> &normals = fe_values_space_face_neighbor.get_normal_vectors();
 
-		 jump_values = 0;
+		jump_values = 0;
 
-		 if (timestep_number > 1)
-		 {
-		 fe_values_space_face.get_function_gradients (old_solution_plus, solution_face_gradient_values);
-		 fe_values_space_face_neighbor.get_function_gradients (old_solution_plus, solution_face_gradient_neighbor_values);
+		if (timestep_number > 1)
+		{
+		fe_values_space_face.get_function_gradients (old_solution_plus, solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (old_solution_plus, solution_face_gradient_neighbor_values);
 
 		    for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
 		    {
 		    jump_values(q_space) = solution_face_gradient_neighbor_values[q_space]*normals[q_space] - solution_face_gradient_values[q_space]*normals[q_space];
 		    }
-		 }
+		}
 
-		 switch(time_degree)
-		 {
-		 case 0: fe_values_space_face.get_function_gradients (solution, solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (solution, solution_face_gradient_neighbor_values); break;
-		 default: fe_values_space_face.get_function_gradients (reordered_solution.block(0), solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (reordered_solution.block(0), solution_face_gradient_neighbor_values);
-		 }
+		switch(time_degree)
+		{
+		case 0: fe_values_space_face.get_function_gradients (solution, solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (solution, solution_face_gradient_neighbor_values); break;
+		default: fe_values_space_face.get_function_gradients (reordered_solution.block(0), solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (reordered_solution.block(0), solution_face_gradient_neighbor_values);
+		}
 
 	        for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
 		    {
 		    jump_values(q_space) += solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space];
 		    }
 
-               for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-		       {
-		       if (time_degree > 1)
-	     	   {
-	           if (q_time > 0) {fe_values_space_face.get_function_gradients (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_face_gradient_neighbor_values);}
-	           fe_values_space_face.get_function_gradients (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_face_gradient_neighbor_values); 
-	           }
-			      
-				  for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
-		          {			
-		       	  estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values(q_time)*jump_values(q_space)));
-			      derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values(q_time)*jump_values(q_space)));
-			      }
-               }	 
-		 }
-		 else
-		 {
-		 typename DoFHandler<dim>::active_cell_iterator space_cell_neighbor = space_cell->neighbor (face);
-		 std::pair<unsigned int, unsigned int> neighbor_face_subface_no = cell->neighbor_of_coarser_neighbor (face);
-
-		 fe_values_space_face.reinit (space_cell, face);
-         fe_values_space_subface.reinit (space_cell_neighbor, neighbor_face_subface_no.first, neighbor_face_subface_no.second);
-		 const std::vector<Tensor<1,dim> > &normals = fe_values_space_subface.get_normal_vectors();
-
-		 jump_values = 0;
-
-		 if (timestep_number > 1)
-		 {
-		 fe_values_space_face.get_function_gradients (old_solution_plus, solution_face_gradient_values);
-		 fe_values_space_subface.get_function_gradients (old_solution_plus, solution_face_gradient_neighbor_values);
-
-		    for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
 		    {
-		    jump_values(q_space) = solution_face_gradient_neighbor_values[q_space]*normals[q_space] - solution_face_gradient_values[q_space]*normals[q_space];
-		    }
-		 }
-
-		 switch(time_degree)
-		 {
-		 case 0: fe_values_space_face.get_function_gradients (solution, solution_face_gradient_values); fe_values_space_subface.get_function_gradients (solution, solution_face_gradient_neighbor_values); break;
-		 default: fe_values_space_face.get_function_gradients (reordered_solution.block(0), solution_face_gradient_values); fe_values_space_subface.get_function_gradients (reordered_solution.block(0), solution_face_gradient_neighbor_values);
-		 }
-
-	        for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
-		    {
-		    jump_values(q_space) += solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space];
-		    }
-
-               for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-		       {
-		       if (time_degree > 1)
-	     	   {
-	           if (q_time > 0) {fe_values_space_face.get_function_gradients (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_face_gradient_values); fe_values_space_subface.get_function_gradients (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_face_gradient_neighbor_values);}
-	           fe_values_space_face.get_function_gradients (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_face_gradient_values); fe_values_space_subface.get_function_gradients (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_face_gradient_neighbor_values); 
-	           }
+		    if (time_degree > 1)
+	     	{
+	        if (q_time > 0) {fe_values_space_face.get_function_gradients (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_face_gradient_neighbor_values);}
+	        fe_values_space_face.get_function_gradients (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_face_gradient_neighbor_values); 
+	        }
 			      
-				  for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
-		          {			
-		       	  estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values(q_time)*jump_values(q_space)));
-			      derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values(q_time)*jump_values(q_space)));
-			      }
-               }	
-		    }
-	  }
-	  else
-	  {
-	   
-	  }
-   }
-   }
+				for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
+		        {			
+		       	estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values(q_time)*jump_values(q_space)));
+			    derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values(q_time)*jump_values(q_space)));
+			    }
+            }	 
+        }
+        }
 
-   for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-   {
-   space_estimator_values.block(q_time)(cell_no) += C_edge*estimator_values(q_time);
-   space_derivative_estimator_values.block(q_time)(cell_no) += C_edge*derivative_estimator_values(q_time);
-   }
+        for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+        {
+        space_estimator_values.block(q_time)(cell_no) += C_edge*estimator_values(q_time);
+        space_derivative_estimator_values.block(q_time)(cell_no) += C_edge*derivative_estimator_values(q_time);
+        }
+    }
+
+    Vector<double> reconstructed_solution_at_q_time (no_of_space_dofs);
+
+        for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+        {
+        switch(time_degree)
+        {
+        case 0: reconstructed_solution_at_q_time = solution; reconstructed_solution_at_q_time *= 1 + Q_values(q_time); reconstructed_solution_at_q_time.add(-Q_values(q_time), old_solution_plus); break;
+        default: reconstructed_solution_at_q_time = reordered_solution_at_temporal_quadrature_points.block(q_time); reconstructed_solution_at_q_time.add(Q_values(q_time), reordered_solution_at_temporal_quadrature_points.block(0)); reconstructed_solution_at_q_time.add(-Q_values(q_time), old_solution_plus);
+        }
+
+        double space_estimator_at_q_time = space_estimator_values.block(q_time).linfty_norm();
+
+        etaS += (space_estimator_at_q_time*(2*reconstructed_solution_at_q_time.linfty_norm() + space_estimator_at_q_time) + space_derivative_estimator_values.block(q_time).linfty_norm())*fe_values_time.JxW(q_time);
+        }
 }
 
-Vector<double> reconstructed_solution_at_q_time (no_of_space_dofs);
-
-for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-{
-switch(time_degree)
-{
-case 0: reconstructed_solution_at_q_time = solution; reconstructed_solution_at_q_time *= 1 + Q_values(q_time); reconstructed_solution_at_q_time.add(-Q_values(q_time), old_solution_plus); break;
-default: reconstructed_solution_at_q_time = reordered_solution_at_temporal_quadrature_points.block(q_time); reconstructed_solution_at_q_time.add(Q_values(q_time), reordered_solution_at_temporal_quadrature_points.block(0)); reconstructed_solution_at_q_time.add(-Q_values(q_time), old_solution_plus);
-}
-
-double space_estimator_at_q_time = space_estimator_values.block(q_time).linfty_norm();
-
-etaS += (space_estimator_at_q_time*(2*reconstructed_solution_at_q_time.linfty_norm() + space_estimator_at_q_time) + space_derivative_estimator_values.block(q_time).linfty_norm())*fe_values_time.JxW(q_time);
-}
-}
-
-template <int dim>
-void dGcGblowup<dim>::compute_time_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time)
+template <int dim> void dGcGblowup<dim>::compute_time_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time)
 {
 const QGaussLobatto<dim> quadrature_formula_space (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
 
@@ -1082,7 +990,7 @@ void dGcGblowup<dim>::run ()
 {
 // Setup meshes
 GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.copy_triangulation (triangulation_time); old_dof_handler_time.distribute_dofs (old_fe_time);
-GridGenerator::hyper_cube (triangulation_space, -5, 5);  triangulation_space.refine_global (5); old_triangulation_space.copy_triangulation (triangulation_space); old_old_triangulation_space.copy_triangulation (triangulation_space);
+GridGenerator::hyper_cube (triangulation_space, -5, 5);  triangulation_space.refine_global (6); old_triangulation_space.copy_triangulation (triangulation_space); old_old_triangulation_space.copy_triangulation (triangulation_space);
 old_dof_handler_space.distribute_dofs (old_fe_space); old_old_dof_handler_space.distribute_dofs (old_old_fe_space); old_dof_handler.distribute_dofs (old_fe); 
 
 setup_system_full ();
