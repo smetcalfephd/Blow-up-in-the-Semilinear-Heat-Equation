@@ -58,8 +58,7 @@ const unsigned int no_of_points = points.size();
 	}
 }
 
-template <int dim>
-class dGcGblowup
+template <int dim> class dGcGblowup
 {
 public:
   	
@@ -70,7 +69,7 @@ public:
     const double a = 1; // Diffusion coefficient
 
     // Discretisation parameters
-    const unsigned int space_degree = 2; // Spatial polynomial degree
+    const unsigned int space_degree = 5; // Spatial polynomial degree
 	const unsigned int time_degree = 1; // Temporal polynomial degree
     unsigned int timestep_number = 1; // The current timestep
     double time = 0; // The current time
@@ -184,8 +183,7 @@ old_solution_plus.reinit (no_of_old_space_dofs);
 old_old_solution_plus.reinit (no_of_old_old_space_dofs);
 }
 
-template <int dim>
-void dGcGblowup<dim>::setup_system_time ()
+template <int dim> void dGcGblowup<dim>::setup_system_time ()
 {
 dof_handler_time.distribute_dofs (fe_time);
 
@@ -235,13 +233,11 @@ typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active()
 
         for (unsigned int k = 0; k < dofs_per_cell; ++k)
         {
-        unsigned int comp_s_k = fe.system_to_component_index(k).second;
-        unsigned int comp_t_k = fe.system_to_component_index(k).first;
+        unsigned int comp_s_k = fe.system_to_component_index(k).second; unsigned int comp_t_k = fe.system_to_component_index(k).first;
 
             for (unsigned int l = 0; l < dofs_per_cell; ++l)
             {
-            unsigned int comp_s_l = fe.system_to_component_index(l).second;
-            unsigned int comp_t_l = fe.system_to_component_index(l).first;
+            unsigned int comp_s_l = fe.system_to_component_index(l).second; unsigned int comp_t_l = fe.system_to_component_index(l).first;
 
             double value = 0;
 
@@ -703,12 +699,15 @@ etaS = 0; double space_estimator_jump_value = 0; double nonlinearity_value = 0;
 		        }
         }
 
+        if (timestep_number > 1)
+        {
         space_estimator_jump_value += L2_projection_f_values[0] - solution_time_derivative_values(q_space) - (1/dt)*Q_derivative_values(0)*(solution_values(q_space) - old_solution_values(q_space+(no_q_time-1)*no_q_space)) + solution_laplacian_values(q_space);
+        }
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
 	        {
-	        estimator_values(q_time) = fmax(estimator_values(q_time), fabs(L2_projection_f_values[q_time] - solution_time_derivative_values(q_space+q_time*no_q_space) - (1/dt)*Q_derivative_values(q_time)*(solution_values(q_space) - old_solution_values(q_space+(no_q_time-1)*no_q_space)) + solution_laplacian_values(q_space+q_time*no_q_space) + Q_values(q_time)*space_estimator_jump_value)); 
-	        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(L2_projection_f_time_derivative_values[q_time][0] - solution_second_time_derivative_values(q_time) - (1/dt)*(1/dt)*Q_second_derivative_values(q_time)*(solution_values(q_space) - old_solution_values(q_space+(no_q_time-1)*no_q_space)) + solution_time_derivative_laplacian_values(q_space+q_time*no_q_space) + (1/dt)*Q_derivative_values(q_time)*space_estimator_jump_value));
+	        estimator_values(q_time) = fmax(estimator_values(q_time), fabs(L2_projection_f_values[q_time] - solution_time_derivative_values(q_space + q_time*no_q_space) - (1/dt)*Q_derivative_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space)) + solution_laplacian_values(q_space + q_time*no_q_space) + Q_values(q_time)*space_estimator_jump_value)); 
+	        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(L2_projection_f_time_derivative_values[q_time][0] - solution_second_time_derivative_values(q_time) - (1/dt)*(1/dt)*Q_second_derivative_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space)) + solution_time_derivative_laplacian_values(q_space + q_time*no_q_space) + (1/dt)*Q_derivative_values(q_time)*space_estimator_jump_value));
 	        }
         }
 
@@ -749,10 +748,13 @@ etaS = 0; double space_estimator_jump_value = 0; double nonlinearity_value = 0;
 		default: fe_values_space_face.get_function_gradients (reordered_solution.block(0), solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (reordered_solution.block(0), solution_face_gradient_neighbor_values);
 		}
 
+        if (timestep_number > 1)
+        {
 	        for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
 		    {
 		    jump_values(q_space) += solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space];
 		    }
+        }
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
 		    {
@@ -830,104 +832,104 @@ else {create_temporal_mass_matrix (old_fe_time, old_temporal_mass_matrix_inv); o
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active(); typename DoFHandler<1>::active_cell_iterator old_time_cell = old_dof_handler_time.begin_active();
 fe_values_time.reinit (time_cell); old_fe_values_time.reinit (old_time_cell);
 
-for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-{
-compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values(q_time), Q_derivative_values(q_time), etaT);
-}
+    for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+    {
+    compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values(q_time), Q_derivative_values(q_time), etaT);
+    }
 
 typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (), final_cell = dof_handler.end ();
 typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active ();
 
 etaT = 0; double discrete_laplacian_jump_value = 0; double nonlinearity_value = 0; double solution_time_derivative_value = 0;
 
-for (; cell != final_cell; ++cell, ++space_cell)
-{
-fe_values_space.reinit (space_cell);
+    for (; cell != final_cell; ++cell, ++space_cell)
+    {
+    fe_values_space.reinit (space_cell);
 
-cell->get_dof_indices (local_dof_indices);
+    cell->get_dof_indices (local_dof_indices);
 
-get_spacetime_function_values (solution, fe_values_space, fe_values_time, local_dof_indices, solution_values);
-switch(timestep_number) {case 1: fe_values_space.get_function_values (old_solution_plus, old_old_solution_plus_values); for (unsigned int q_space = 0; q_space < no_q_space; ++q_space) {old_solution_values (q_space+(no_q_time-1)*no_q_space) = old_old_solution_plus_values[q_space];} initialvalueslaplacian<dim>().value_list (fe_values_space.get_quadrature_points(), old_old_solution_plus_values); break;
-default: get_spacetime_function_values (old_solution, fe_values_space, old_fe_values_time, local_dof_indices, old_solution_values); fe_values_space.get_function_values (old_old_solution_plus, old_old_solution_plus_values);}
+    get_spacetime_function_values (solution, fe_values_space, fe_values_time, local_dof_indices, solution_values);
+    switch(timestep_number) {case 1: fe_values_space.get_function_values (old_solution_plus, old_old_solution_plus_values); for (unsigned int q_space = 0; q_space < no_q_space; ++q_space) {old_solution_values (q_space+(no_q_time-1)*no_q_space) = old_old_solution_plus_values[q_space];} initialvalueslaplacian<dim>().value_list (fe_values_space.get_quadrature_points(), old_old_solution_plus_values); break;
+    default: get_spacetime_function_values (old_solution, fe_values_space, old_fe_values_time, local_dof_indices, old_solution_values); fe_values_space.get_function_values (old_old_solution_plus, old_old_solution_plus_values);}
 
-   for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-   {
-   if (timestep_number > 1)
-   {
-   switch (time_degree) {case 0: L2_projection_f(time_degree) = old_solution_values(q_space)*old_solution_values(q_space); break;
-   default:
-   L2_projection_f(time_degree) = 0; L2_projection_rhs = 0; solution_time_derivative_value = 0;
+        for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+        {
+        if (timestep_number > 1)
+        {
+        switch (time_degree) {case 0: L2_projection_f(time_degree) = old_solution_values(q_space)*old_solution_values(q_space); break;
+        default: L2_projection_f(time_degree) = 0; L2_projection_rhs = 0; solution_time_derivative_value = 0;
 
-      for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-      {
-      nonlinearity_value = old_solution_values(q_space+q_time*no_q_space)*old_solution_values(q_space+q_time*no_q_space)*old_fe_values_time.JxW(q_time);
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+            {
+            nonlinearity_value = old_solution_values(q_space+q_time*no_q_space)*old_solution_values(q_space+q_time*no_q_space)*old_fe_values_time.JxW(q_time);
 
-	     for (unsigned int i = 0; i < time_degree + 1; ++i)
-	     {
-	     L2_projection_rhs(i) += nonlinearity_value*old_fe_values_time.shape_value(i, q_time);
-	     }
-      }
+	            for (unsigned int i = 0; i < time_degree + 1; ++i)
+	            {
+	            L2_projection_rhs(i) += nonlinearity_value*old_fe_values_time.shape_value(i, q_time);
+	            }
+            }
 
-      for (unsigned int i = 0; i < time_degree + 1; ++i)
-      {
-      L2_projection_f(time_degree) += old_temporal_mass_matrix_inv(time_degree, i)*L2_projection_rhs(i);
-      }
+            for (unsigned int i = 0; i < time_degree + 1; ++i)
+            {
+            L2_projection_f(time_degree) += old_temporal_mass_matrix_inv(time_degree, i)*L2_projection_rhs(i);
+            }
 
-	  for (unsigned int i = 0; i < dofs_per_cell; ++i)
-      {
-      const unsigned int comp_s_i = fe.system_to_component_index(i).second;
-      const unsigned int comp_t_i = fe.system_to_component_index(i).first;
+	        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            {
+            const unsigned int comp_s_i = fe.system_to_component_index(i).second;
+            const unsigned int comp_t_i = fe.system_to_component_index(i).first;
 
-      solution_time_derivative_value += old_solution(local_dof_indices[i])*fe_values_space.shape_value(comp_s_i, q_space)*old_fe_values_time.shape_grad(comp_t_i, no_q_time - 1)[0];
-      }
-   }
+            solution_time_derivative_value += old_solution(local_dof_indices[i])*fe_values_space.shape_value(comp_s_i, q_space)*old_fe_values_time.shape_grad(comp_t_i, no_q_time - 1)[0];
+            }
+        }
 
-   discrete_laplacian_jump_value = -L2_projection_f(time_degree) + solution_time_derivative_value + (1/dt_old)*Q_derivative_values(no_q_time-1)*(old_solution_values(q_space)-old_old_solution_plus_values[q_space]);
-   }
-   else
-   {
-   discrete_laplacian_jump_value = a*old_old_solution_plus_values[q_space];
-   }
+        discrete_laplacian_jump_value = -L2_projection_f(time_degree) + solution_time_derivative_value + (1/dt_old)*Q_derivative_values(no_q_time-1)*(old_solution_values(q_space)-old_old_solution_plus_values[q_space]);
+        }
 
-   switch (time_degree) {case 0: for (unsigned int q_time = 0; q_time < no_q_time; ++q_time) {L2_projection_f_values[q_time] = solution_values(q_space)*solution_values(q_space);} break;
-   default:
-   L2_projection_rhs = 0; solution_time_derivative_value = 0;
+        switch (time_degree) {case 0: for (unsigned int q_time = 0; q_time < no_q_time; ++q_time) {L2_projection_f_values[q_time] = solution_values(q_space)*solution_values(q_space);} break;
+        default: L2_projection_rhs = 0; solution_time_derivative_value = 0;
 
-      for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-      {
-      nonlinearity_value = solution_values(q_space+q_time*no_q_space)*solution_values(q_space+q_time*no_q_space)*fe_values_time.JxW(q_time);
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+            {
+            nonlinearity_value = solution_values(q_space+q_time*no_q_space)*solution_values(q_space+q_time*no_q_space)*fe_values_time.JxW(q_time);
 
-         for (unsigned int i = 0; i < time_degree + 1; ++i)
-         {
-         L2_projection_rhs(i) += nonlinearity_value*fe_values_time.shape_value(i, q_time);
-     	 }
-      }
+                for (unsigned int i = 0; i < time_degree + 1; ++i)
+                {
+                L2_projection_rhs(i) += nonlinearity_value*fe_values_time.shape_value(i, q_time);
+     	        }
+            }
 
-   temporal_mass_matrix_inv.vmult (L2_projection_f, L2_projection_rhs);
-   fe_values_time.get_function_values (L2_projection_f, L2_projection_f_values);
+        temporal_mass_matrix_inv.vmult (L2_projection_f, L2_projection_rhs);
+        fe_values_time.get_function_values (L2_projection_f, L2_projection_f_values);
 
-      for (unsigned int i = 0; i < dofs_per_cell; ++i)
-      {
-      const unsigned int comp_s_i = fe.system_to_component_index(i).second;
-      const unsigned int comp_t_i = fe.system_to_component_index(i).first;
+        if (timestep_number > 1)
+        {
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            {
+            const unsigned int comp_s_i = fe.system_to_component_index(i).second; const unsigned int comp_t_i = fe.system_to_component_index(i).first;
 
-      solution_time_derivative_value += solution(local_dof_indices[i])*fe_values_space.shape_value(comp_s_i, q_space)*fe_values_time.shape_grad(comp_t_i, 0)[0];
-      }
-   }
+            solution_time_derivative_value += solution(local_dof_indices[i])*fe_values_space.shape_value(comp_s_i, q_space)*fe_values_time.shape_grad(comp_t_i, 0)[0];
+            }
+        }
+        }
 
-   discrete_laplacian_jump_value += L2_projection_f_values[0] - solution_time_derivative_value - (1/dt)*Q_derivative_values(0)*(solution_values(q_space)-old_solution_values(q_space+(no_q_time-1)*no_q_space));
+        if (timestep_number > 1)
+        {
+        discrete_laplacian_jump_value += L2_projection_f_values[0] - solution_time_derivative_value - (1/dt)*Q_derivative_values(0)*(solution_values(q_space)-old_solution_values(q_space+(no_q_time-1)*no_q_space));
+        }
 
-	  for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-      {
-      estimator_values(q_time) = fmax(estimator_values(q_time), fabs((solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*(solution_values(q_space)-old_solution_values(q_space+(no_q_time-1)*no_q_space)))*(solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*(solution_values(q_space)-old_solution_values(q_space+(no_q_time-1)*no_q_space))) - L2_projection_f_values[q_time] - Q_values(q_time)*discrete_laplacian_jump_value));
-      }
-   }
-}
+	        for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+            {
+            if (timestep_number == 1) {estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_values(q_space + q_time*no_q_space)*solution_values(q_space + q_time*no_q_space) - L2_projection_f_values[q_time] + (1/dt)*Q_derivative_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space))));}
+            else {estimator_values(q_time) = fmax(estimator_values(q_time), fabs((solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space)))*(solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space))) - L2_projection_f_values[q_time] - Q_values(q_time)*discrete_laplacian_jump_value));}
+            }
+        }
+    }
 
-for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-{
-etaT += estimator_values(q_time)*fe_values_time.JxW(q_time);
-}
+    for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+    {
+    etaT += estimator_values(q_time)*fe_values_time.JxW(q_time);
+    }
 }
 
 template <int dim>
