@@ -74,8 +74,8 @@ public:
     const double a = 1; // Diffusion coefficient
 
     // Discretisation parameters
-    const unsigned int space_degree = 5; // Spatial polynomial degree
-	const unsigned int time_degree = 2; // Temporal polynomial degree
+    const unsigned int space_degree = 3; // Spatial polynomial degree
+	const unsigned int time_degree = 1; // Temporal polynomial degree
     unsigned int timestep_number = 0; // The current timestep
     double time = 0; // The current time
     double dt = 0.1*0.215; // The current timestep length
@@ -91,7 +91,7 @@ public:
 	double delta_residual = 0; // The residual arising from the numerical solution of the delta equation
 
 	// Error estimator thresholds
-    double spatial_refinement_threshold = 1e-7; // The temporal refinement threshold
+    double spatial_refinement_threshold = 1e-4; // The temporal refinement threshold
 	double temporal_refinement_threshold = 1e-3; // The temporal refinement threshold
 	double delta_residual_threshold = 1e-04; // The threshold for the delta equation residual above which we consider the delta equation as having no root
 
@@ -165,8 +165,7 @@ DoFTools::make_zero_boundary_constraints (dof_handler, constraints);
 constraints.close ();
 
 DynamicSparsityPattern dsp (no_of_dofs);
-DoFTools::make_sparsity_pattern (dof_handler, dsp);
-constraints.condense (dsp);
+DoFTools::make_sparsity_pattern (dof_handler, dsp, constraints, false);
 sparsity_pattern.copy_from (dsp);
 
 reordered_solution.reinit (time_degree + 1);
@@ -202,6 +201,7 @@ FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values
 const unsigned int no_q_space = quadrature_formula_space.size ();
 const unsigned int dofs_per_cell_space = fe_space.dofs_per_cell; const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
+FullMatrix<double> local_system_matrix (dofs_per_cell, dofs_per_cell);
 FullMatrix<double> local_mass_matrix (dofs_per_cell_space, dofs_per_cell_space);
 FullMatrix<double> local_laplace_matrix (dofs_per_cell_space, dofs_per_cell_space);
 FullMatrix<double> temporal_mass_matrix (time_degree + 1, time_degree + 1);
@@ -216,7 +216,7 @@ typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (
 
     for (; space_cell != final_space_cell; ++cell, ++space_cell)
     {
-    local_mass_matrix = 0; local_laplace_matrix = 0;
+    local_system_matrix = 0; local_mass_matrix = 0; local_laplace_matrix = 0;
     fe_values_space.reinit (space_cell);
 	cell->get_dof_indices (local_dof_indices);
 
@@ -240,19 +240,17 @@ typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (
             {
             unsigned int comp_s_l = fe.system_to_component_index(l).second; unsigned int comp_t_l = fe.system_to_component_index(l).first;
 
-            double value = 0;
-
             switch(time_degree)
             {
-            case 0: value = temporal_mass_matrix(comp_t_k, comp_t_l)*local_laplace_matrix(comp_s_k, comp_s_l); break;
-            default: value = time_derivative_matrix(comp_t_k, comp_t_l)*local_mass_matrix(comp_s_k, comp_s_l) + temporal_mass_matrix(comp_t_k, comp_t_l)*local_laplace_matrix(comp_s_k, comp_s_l);
+            case 0: local_system_matrix(k,l) += temporal_mass_matrix(comp_t_k, comp_t_l)*local_laplace_matrix(comp_s_k, comp_s_l); break;
+            default: local_system_matrix(k,l) += time_derivative_matrix(comp_t_k, comp_t_l)*local_mass_matrix(comp_s_k, comp_s_l) + temporal_mass_matrix(comp_t_k, comp_t_l)*local_laplace_matrix(comp_s_k, comp_s_l);
             }
 
-            if ((comp_t_k == 0) && (comp_t_l == 0)) {value += local_mass_matrix(comp_s_k, comp_s_l);}
-
-            system_matrix.add (local_dof_indices[k], local_dof_indices[l], value);
+            if ((comp_t_k == 0) && (comp_t_l == 0)) {local_system_matrix(k,l) += local_mass_matrix(comp_s_k, comp_s_l);}
             }
         }
+
+    constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix);
     }
 }
 
@@ -319,7 +317,7 @@ spatial_sparsity_pattern.copy_from (dsp);
 SparseMatrix<double> laplace_matrix; laplace_matrix.reinit (spatial_sparsity_pattern);
 FullMatrix<double> local_laplace_matrix (dofs_per_cell_space, dofs_per_cell_space);
 Vector<double> right_hand_side (no_of_space_dofs);
-Vector<double> cell_rhs (dofs_per_cell_space);
+Vector<double> local_right_hand_side (dofs_per_cell_space);
 std::vector<double> laplacian_values (no_q_space);
 std::vector<types::global_dof_index> local_dof_indices_space (dofs_per_cell_space);
 
@@ -327,7 +325,7 @@ typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.be
 
     for (; space_cell != final_space_cell; ++space_cell)
     {
-    local_laplace_matrix = 0; cell_rhs = 0;
+    local_laplace_matrix = 0; local_right_hand_side = 0;
     fe_values_space.reinit (space_cell);
     space_cell->get_dof_indices (local_dof_indices_space);
 
@@ -347,7 +345,7 @@ typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.be
 
             for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
             {
-            cell_rhs(i) -= laplacian_values[q_space]*fe_values_space.shape_value(i,q_space)*fe_values_space.JxW(q_space);
+            local_right_hand_side(i) -= laplacian_values[q_space]*fe_values_space.shape_value(i,q_space)*fe_values_space.JxW(q_space);
             }
         }
 
@@ -358,7 +356,7 @@ typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.be
             laplace_matrix (local_dof_indices_space[i], local_dof_indices_space[j]) += local_laplace_matrix(i,j);
             }
 
-        right_hand_side(local_dof_indices_space[i]) += cell_rhs(i);    
+        right_hand_side(local_dof_indices_space[i]) += local_right_hand_side(i);    
         }
     }
 
@@ -396,7 +394,7 @@ const unsigned int dofs_per_cell = fe.dofs_per_cell;
 std::vector<double> old_solution_plus_values (no_q_space);
 Vector<double> nonlinearity_values (no_q_space*no_q_time);
 Vector<double> residual_vector (dof_handler.n_dofs());
-Vector<double> cell_rhs (dofs_per_cell);
+Vector<double> local_right_hand_side (dofs_per_cell);
 std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active (); fe_values_time.reinit (time_cell);
@@ -414,7 +412,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
         for (; cell != final_cell; ++cell, ++space_cell)
         {
-        cell_rhs = 0;
+        local_right_hand_side = 0;
         fe_values_space.reinit (space_cell);
 
         cell->get_dof_indices (local_dof_indices);
@@ -436,22 +434,20 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                 {
                     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
 	                {
-	                cell_rhs(i) += nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_time.shape_value(comp_t_i,q_time);
+	                local_right_hand_side(i) += nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_time.shape_value(comp_t_i,q_time);
  	                }
 
-                if (comp_t_i == 0) {cell_rhs(i) += old_solution_plus_values[q_space]*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_space.JxW(q_space);}
+                if (comp_t_i == 0) {local_right_hand_side(i) += old_solution_plus_values[q_space]*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_space.JxW(q_space);}
                 }
-
-            right_hand_side (local_dof_indices[i]) += cell_rhs(i);
             }
+
+        constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, right_hand_side);
         }
 
     SolverBicgstab<>::AdditionalData data; data.exact_residual = false;
 
     SolverControl solver_control (1000, max*sqrt(max)*rel_tol*sqrt(rel_tol), false, false);
     SolverBicgstab<> solver (solver_control, data);
-
-    constraints.condense (system_matrix, right_hand_side);
 
     SparseILU<double> ilu; ilu.initialize (system_matrix);
     solver.solve (system_matrix, solution, right_hand_side, ilu);
