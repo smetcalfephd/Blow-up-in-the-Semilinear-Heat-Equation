@@ -202,8 +202,8 @@ FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values
 const unsigned int no_q_space = quadrature_formula_space.size ();
 const unsigned int dofs_per_cell_space = fe_space.dofs_per_cell; const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
-FullMatrix<double> local_mass_matrix (dofs_per_cell, dofs_per_cell);
-FullMatrix<double> local_laplace_matrix (dofs_per_cell, dofs_per_cell);
+FullMatrix<double> local_mass_matrix (dofs_per_cell_space, dofs_per_cell_space);
+FullMatrix<double> local_laplace_matrix (dofs_per_cell_space, dofs_per_cell_space);
 FullMatrix<double> temporal_mass_matrix (time_degree + 1, time_degree + 1);
 FullMatrix<double> time_derivative_matrix (time_degree + 1, time_degree + 1);
 std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
