@@ -799,7 +799,7 @@ etaS = 0; double space_estimator_jump_value = 0; double nonlinearity_value = 0;
         if (space_cell->face(face)->at_boundary() == false && space_cell->face(face)->has_children() == false && space_cell->neighbor_is_coarser(face) == false)
         {
 		typename DoFHandler<dim>::active_cell_iterator space_cell_neighbor = space_cell->neighbor (face);
-		unsigned int neighbor_face_no = space_cell->neighbor_face_no (face);
+		const unsigned int neighbor_face_no = space_cell->neighbor_face_no (face);
          
 	    fe_values_space_face.reinit (space_cell, face); fe_values_space_face_neighbor.reinit (space_cell_neighbor, neighbor_face_no);
 		const std::vector<Tensor<1,dim>> &normals = fe_values_space_face_neighbor.get_normal_vectors ();
@@ -836,6 +836,93 @@ etaS = 0; double space_estimator_jump_value = 0; double nonlinearity_value = 0;
 			    derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values(q_time)*jump_values(q_space)));
 			    }
             }	 
+        }
+        if (space_cell->face(face)->at_boundary() == false && space_cell->face(face)->has_children() == false && space_cell->neighbor_is_coarser(face) == true)
+        {
+        typename DoFHandler<dim>::active_cell_iterator space_cell_neighbor = space_cell->neighbor (face);
+        std::pair<unsigned int, unsigned int> neighbor_face_no = space_cell->neighbor_of_coarser_neighbor (face);
+
+	    fe_values_space_face.reinit (space_cell, face); fe_values_space_subface.reinit (space_cell_neighbor, neighbor_face_no.first, neighbor_face_no.second);
+        const std::vector<Tensor<1,dim>> &normals = fe_values_space_subface.get_normal_vectors ();
+
+		fe_values_space_face.get_function_gradients (old_solution_plus, solution_face_gradient_values); fe_values_space_subface.get_function_gradients (old_solution_plus, solution_face_gradient_neighbor_values);
+
+            for (unsigned int q_space = 0; q_space < no_q_space_face; ++q_space)
+		    {
+		    jump_values(q_space) = solution_face_gradient_neighbor_values[q_space]*normals[q_space] - solution_face_gradient_values[q_space]*normals[q_space];
+		    }
+
+		switch(time_degree)
+		{
+		case 0: fe_values_space_face.get_function_gradients (solution, solution_face_gradient_values); fe_values_space_subface.get_function_gradients (solution, solution_face_gradient_neighbor_values); break;
+		default: fe_values_space_face.get_function_gradients (reordered_solution.block(0), solution_face_gradient_values); fe_values_space_subface.get_function_gradients (reordered_solution.block(0), solution_face_gradient_neighbor_values);
+		}
+
+            for (unsigned int q_space = 0; q_space < no_q_space_face; ++q_space)
+		    {
+		    jump_values(q_space) += solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space];
+		    }
+
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+		    {
+		    if (time_degree > 0)
+	     	{
+	        if (q_time > 0) {fe_values_space_face.get_function_gradients (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_face_gradient_values); fe_values_space_subface.get_function_gradients (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_face_gradient_neighbor_values);}
+	        fe_values_space_face.get_function_gradients (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_face_gradient_values); fe_values_space_subface.get_function_gradients (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_face_gradient_neighbor_values);
+            }
+
+                for (unsigned int q_space = 0; q_space < no_q_space_face; ++q_space)
+		        {			
+		       	estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values(q_time)*jump_values(q_space)));
+			    derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values(q_time)*jump_values(q_space)));
+			    }
+            }
+        }
+        if (space_cell->face(face)->at_boundary() == false && space_cell->face(face)->has_children() == true && space_cell->neighbor_is_coarser(face) == false)
+        {
+        const unsigned int no_of_subfaces = space_cell->face(face)->n_children();
+        const unsigned int neighbor_face_no = space_cell->neighbor_of_neighbor (face);
+
+            for (unsigned int subface = 0; subface < no_of_subfaces; ++subface)
+            {
+            typename DoFHandler<dim>::active_cell_iterator space_cell_neighbor = space_cell->neighbor_child_on_subface (face, subface);
+
+            fe_values_space_subface.reinit (space_cell, face, subface); fe_values_space_face_neighbor.reinit (space_cell_neighbor, neighbor_face_no);
+            const std::vector<Tensor<1,dim>> &normals = fe_values_space_subface.get_normal_vectors ();
+
+            fe_values_space_subface.get_function_gradients (old_solution_plus, solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (old_solution_plus, solution_face_gradient_neighbor_values);
+
+		        for (unsigned int q_space = 0; q_space < no_q_space_face; ++q_space)
+		        {
+		        jump_values(q_space) = solution_face_gradient_neighbor_values[q_space]*normals[q_space] - solution_face_gradient_values[q_space]*normals[q_space];
+		        }
+
+	       	switch(time_degree)
+		    {
+		    case 0: fe_values_space_subface.get_function_gradients (solution, solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (solution, solution_face_gradient_neighbor_values); break;
+		    default: fe_values_space_subface.get_function_gradients (reordered_solution.block(0), solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (reordered_solution.block(0), solution_face_gradient_neighbor_values);
+		    }
+
+	            for (unsigned int q_space = 0; q_space < no_q_space_face; ++q_space)
+		        {
+		        jump_values(q_space) += solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space];
+		        }
+
+                for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+		        {
+		        if (time_degree > 0)
+	         	{
+	            if (q_time > 0) {fe_values_space_subface.get_function_gradients (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (reordered_solution_at_temporal_quadrature_points.block(q_time), solution_face_gradient_neighbor_values);}
+	            fe_values_space_subface.get_function_gradients (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (reordered_solution_time_derivative_at_temporal_quadrature_points.block(q_time), solution_time_derivative_face_gradient_neighbor_values);
+                }
+			      
+				    for (unsigned int q_space = 0; q_space < no_q_space_face; ++q_space)
+		            {			
+		       	    estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values(q_time)*jump_values(q_space)));
+			        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values(q_time)*jump_values(q_space)));
+			        }
+                }	
+            }
         }
         }
 
