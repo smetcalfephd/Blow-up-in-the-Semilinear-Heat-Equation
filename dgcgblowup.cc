@@ -214,11 +214,20 @@ if (time_degree > 0) {create_time_derivative_matrix (fe_time, time_derivative_ma
 typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active (), final_space_cell = dof_handler_space.end ();
 typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active ();
 
+double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0;
+
     for (; space_cell != final_space_cell; ++cell, ++space_cell)
     {
-    local_system_matrix = 0; local_mass_matrix = 0; local_laplace_matrix = 0;
-    fe_values_space.reinit (space_cell);
 	cell->get_dof_indices (local_dof_indices);
+    cell_size = space_cell->measure ();
+
+    cell_size_check = fabs(cell_size - previous_cell_size);
+
+    if (cell_size_check > 1e-15)
+    {
+    local_system_matrix = 0; local_mass_matrix = 0; local_laplace_matrix = 0;
+
+    fe_values_space.reinit (space_cell);
 
         for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
             for (unsigned int j = 0; j < i + 1; ++j)
@@ -249,8 +258,10 @@ typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (
             if ((comp_t_k == 0) && (comp_t_l == 0)) {local_system_matrix(k,l) += local_mass_matrix(comp_s_k, comp_s_l);}
             }
         }
+    }
 
     constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix);
+    previous_cell_size = cell_size; 
     }
 }
 
