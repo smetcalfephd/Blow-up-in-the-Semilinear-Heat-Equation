@@ -418,14 +418,7 @@ default: extend_to_constant_in_time_function (old_solution_plus, solution);
 }
 else
 {
-ConstraintMatrix spatial_constraints;
-
-spatial_constraints.clear ();
-DoFTools::make_hanging_node_constraints (dof_handler_space, spatial_constraints);
-DoFTools::make_zero_boundary_constraints (dof_handler_space, spatial_constraints);
-spatial_constraints.close ();
-
-VectorTools::interpolate_to_different_mesh (old_dof_handler_space, old_solution_plus, dof_handler_space, spatial_constraints, solution_plus);
+VectorTools::interpolate_to_different_mesh (old_dof_handler_space, old_solution_plus, dof_handler_space, solution_plus);
 
 switch (time_degree)
 {
