@@ -13,6 +13,7 @@
 #include <deal.II/lac/solver_bicgstab.h>
 #include <deal.II/lac/sparse_ilu.h>
 #include <deal.II/numerics/data_out.h>
+#include <deal.II/numerics/fe_field_function.h>
 #include <deal.II/numerics/vector_tools.h>
 
 #include <iostream>
@@ -91,9 +92,12 @@ public:
 	double delta_residual = 0; // The residual arising from the numerical solution of the delta equation
 
 	// Error estimator thresholds
-    double spatial_refinement_threshold = 1e-4; // The temporal refinement threshold
+    double spatial_refinement_threshold = 1e-4; // The spatial refinement threshold
 	double temporal_refinement_threshold = 1e-3; // The temporal refinement threshold
 	double delta_residual_threshold = 1e-04; // The threshold for the delta equation residual above which we consider the delta equation as having no root
+
+    // Mesh change parameters
+    bool mesh_change = false; // Parameter indicating if mesh change recently occured
 
 private:
 
@@ -388,15 +392,9 @@ template <int dim> void dGcGblowup<dim>::assemble_and_solve (const unsigned int 
 {
 deallog << "Calculating the numerical solution via Picard iteration..." << std::endl;
 
-switch (time_degree)
-{
-case 0: solution = old_solution_plus; break;
-default: extend_to_constant_in_time_function (old_solution_plus, solution);
-}
-
 const QGauss<dim> quadrature_formula_space (no_q_space_x); const QGauss<1> quadrature_formula_time (no_q_time);
 
-FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values | update_JxW_values);
+FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values | update_quadrature_points | update_JxW_values);
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_JxW_values);
 
 const unsigned int no_q_space = quadrature_formula_space.size();
@@ -407,6 +405,34 @@ Vector<double> nonlinearity_values (no_q_space*no_q_time);
 Vector<double> residual_vector (dof_handler.n_dofs());
 Vector<double> local_right_hand_side (dofs_per_cell);
 std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
+
+Functions::FEFieldFunction<dim> old_solution_plus_function (old_dof_handler_space, old_solution_plus);
+
+if (mesh_change == false)
+{
+switch (time_degree)
+{
+case 0: solution = old_solution_plus; break;
+default: extend_to_constant_in_time_function (old_solution_plus, solution);
+}
+}
+else
+{
+ConstraintMatrix spatial_constraints;
+
+spatial_constraints.clear ();
+DoFTools::make_hanging_node_constraints (dof_handler_space, spatial_constraints);
+DoFTools::make_zero_boundary_constraints (dof_handler_space, spatial_constraints);
+spatial_constraints.close ();
+
+VectorTools::project (dof_handler_space, spatial_constraints, quadrature_formula_space, old_solution_plus_function, solution_plus);
+
+switch (time_degree)
+{
+case 0: solution = solution_plus; break;
+default: extend_to_constant_in_time_function (solution_plus, solution);
+}
+}
 
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active (); fe_values_time.reinit (time_cell);
 
@@ -428,7 +454,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
         cell->get_dof_indices (local_dof_indices);
 
-        fe_values_space.get_function_values (old_solution_plus, old_solution_plus_values);
+        old_solution_plus_function.value_list (fe_values_space.get_quadrature_points(), old_solution_plus_values); 
         get_spacetime_function_values (solution, fe_values_space, fe_values_time, local_dof_indices, nonlinearity_values);
 
             for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
