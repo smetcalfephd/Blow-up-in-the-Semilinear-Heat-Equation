@@ -95,7 +95,7 @@ public:
 	// Error estimator thresholds
     double spatial_refinement_threshold = 0.1; // The spatial refinement threshold
     double spatial_coarsening_threshold = 0.1*std::pow(2.0, -1.0*space_degree)*spatial_refinement_threshold; // The spatial coarsening threshold
-	double temporal_refinement_threshold = 1e-7; // The temporal refinement threshold
+	double temporal_refinement_threshold = 1e-3; // The temporal refinement threshold
 	double delta_residual_threshold = 1e-04; // The threshold for the delta equation residual above which we consider the delta equation as having no root
 
     // Mesh change parameters
@@ -571,26 +571,32 @@ template <int dim> void dGcGblowup<dim>::refine_mesh ()
 const unsigned int no_of_cells = triangulation_space.n_active_cells ();
 
 GridRefinement::refine (triangulation_space, refinement_vector, spatial_refinement_threshold);
+GridRefinement::coarsen (triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
 triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
 
-if (triangulation_space.n_active_cells() == no_of_cells) {mesh_change = true;}
+typename Triangulation<dim>::active_cell_iterator space_cell = triangulation_space.begin_active (), final_cell = triangulation_space.end ();
+typename Triangulation<dim>::active_cell_iterator old_space_cell = old_triangulation_space.begin_active ();
 
-//GridRefinement::coarsen (triangulation_space, refinement_vector, spatial_coarsening_threshold);
+    for (; space_cell != final_cell; ++space_cell, ++old_space_cell)
+    {
+        for (unsigned int vertex = 0; vertex < 4; ++vertex)
+        {
+        if ((space_cell->vertex(0) - old_space_cell->vertex(0))*(space_cell->vertex(0) - old_space_cell->vertex(0)) + (space_cell->vertex(1) - old_space_cell->vertex(1))*(space_cell->vertex(1) - old_space_cell->vertex(1)) > 1e-15) {mesh_change = true; break;}
+        }
 
-//triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
-
-// if (triangulation_space.n_active_cells() == no_of_cells) {mesh_change = true;}
+    if (mesh_change == true) {break;}
+    }
 
 if (timestep_number == 0)
 {
 GridRefinement::refine (old_triangulation_space, refinement_vector, spatial_refinement_threshold);
-//GridRefinement::coarsen (old_triangulation_space, refinement_vector, spatial_coarsening_threshold);
+GridRefinement::coarsen (old_triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
 old_triangulation_space.prepare_coarsening_and_refinement (); old_triangulation_space.execute_coarsening_and_refinement ();
 
 GridRefinement::refine (old_old_triangulation_space, refinement_vector, spatial_refinement_threshold);
-//GridRefinement::coarsen (old_old_triangulation_space, refinement_vector, spatial_coarsening_threshold);
+GridRefinement::coarsen (old_old_triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
 old_old_triangulation_space.prepare_coarsening_and_refinement (); old_old_triangulation_space.execute_coarsening_and_refinement ();
 }
