@@ -19,6 +19,11 @@
 #include <iostream>
 #include <fstream>
 
+void f()
+{
+  std::cout << "Triangulation has been changed" << std::endl;
+}
+
 using namespace dealii;
 
 // The initial condition
@@ -38,7 +43,7 @@ const unsigned int no_of_points = points.size();
 	{
 	const double x = points[point](0); const double y = points[point](1);
 
-    // values[i] = 10*(x*x + y*y)*exp(-0.5*(x*x + y*y));
+    //values[point] = 10*(x*x + y*y)*exp(-0.5*(x*x + y*y));
     values[point] = 10*exp(-2*(x*x + y*y));
 	}
 }
@@ -60,6 +65,7 @@ const unsigned int no_of_points = points.size();
 	{
 	const double x = points[point](0); const double y = points[point](1);
 
+    //values[point] = 10*(x*x*x*x + y*y*y*y + 2*x*x*y*y - 6*x*x - 6*y*y + 4)*exp(-0.5*(x*x + y*y));
     values[point] = 80*(2*(x*x + y*y) - 1)*exp(-2*(x*x + y*y));
 	}
 }
@@ -92,24 +98,25 @@ public:
 	double delta_residual = 0; // The residual arising from the numerical solution of the delta equation
 
 	// Error estimator thresholds
-    double spatial_refinement_threshold = 1e-3; // The spatial refinement threshold
+    double spatial_refinement_threshold = 0.1; // The spatial refinement threshold
     double spatial_coarsening_threshold = 0.1*std::pow(2.0, -1.0*space_degree)*spatial_refinement_threshold; // The spatial coarsening threshold
-	double temporal_refinement_threshold = 1e-3; // The temporal refinement threshold
+	double temporal_refinement_threshold = 1e-7; // The temporal refinement threshold
 	double delta_residual_threshold = 1e-04; // The threshold for the delta equation residual above which we consider the delta equation as having no root
 
     // Mesh change parameters
-    bool mesh_change = false; // Parameter indicating if mesh change recently occured
+    bool mesh_change = true; // Parameter indicating if mesh change recently occured
 
 private:
 
     void setup_system_full ();
-    void setup_system_space ();
+//    void setup_system_space ();
 	void setup_system_time ();
 	void create_system_matrix ();
     void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &temporal_mass_matrix) const;
 	void create_time_derivative_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &time_derivative_matrix) const;
     void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection);
 	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol);
+    void refine_initial_mesh ();
     void refine_mesh ();
 	void output_solution () const; // Output the solution
 	void get_spacetime_function_values (const Vector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices, Vector<double> &spacetime_fe_function_values) const;
@@ -199,35 +206,35 @@ refinement_vector.reinit (no_of_cells);
 create_system_matrix ();
 }
 
-template <int dim> void dGcGblowup<dim>::setup_system_space () 
-{
-dof_handler_space.distribute_dofs (fe_space); dof_handler.distribute_dofs (fe);
+//template <int dim> void dGcGblowup<dim>::setup_system_space () 
+//{
+//dof_handler_space.distribute_dofs (fe_space); dof_handler.distribute_dofs (fe);
 
-unsigned int no_of_space_dofs = dof_handler_space.n_dofs ();
-unsigned int no_of_dofs = no_of_space_dofs*(time_degree + 1);
-unsigned int no_of_cells = triangulation_space.n_active_cells ();
+//unsigned int no_of_space_dofs = dof_handler_space.n_dofs ();
+//unsigned int no_of_dofs = no_of_space_dofs*(time_degree + 1);
+//unsigned int no_of_cells = triangulation_space.n_active_cells ();
 
-constraints.clear ();
-DoFTools::make_hanging_node_constraints (dof_handler, constraints);
-DoFTools::make_zero_boundary_constraints (dof_handler, constraints);
-constraints.close ();
+//constraints.clear ();
+//DoFTools::make_hanging_node_constraints (dof_handler, constraints);
+//DoFTools::make_zero_boundary_constraints (dof_handler, constraints);
+//constraints.close ();
 
-DynamicSparsityPattern dsp (no_of_dofs);
-DoFTools::make_sparsity_pattern (dof_handler, dsp, constraints, false);
-sparsity_pattern.copy_from (dsp);
+//DynamicSparsityPattern dsp (no_of_dofs);
+//DoFTools::make_sparsity_pattern (dof_handler, dsp, constraints, false);
+//sparsity_pattern.copy_from (dsp);
 
-reordered_solution.reinit (time_degree + 1);
-for (unsigned int i = 0; i < time_degree + 1; ++i)
-{
-reordered_solution.block(i).reinit (no_of_space_dofs);
-}
-reordered_solution.collect_sizes ();
+//reordered_solution.reinit (time_degree + 1);
+//for (unsigned int i = 0; i < time_degree + 1; ++i)
+//{
+//reordered_solution.block(i).reinit (no_of_space_dofs);
+//}
+//reordered_solution.collect_sizes ();
 
-right_hand_side.reinit (no_of_dofs);
-solution.reinit (no_of_dofs);
-solution_plus.reinit (no_of_space_dofs);
-refinement_vector.reinit (no_of_cells);
-}
+//right_hand_side.reinit (no_of_dofs);
+//solution.reinit (no_of_dofs);
+//solution_plus.reinit (no_of_space_dofs);
+//refinement_vector.reinit (no_of_cells);
+//}
 
 template <int dim> void dGcGblowup<dim>::setup_system_time ()
 {
@@ -450,7 +457,7 @@ std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
 Functions::FEFieldFunction<dim> old_solution_plus_function (old_dof_handler_space, old_solution_plus);
 
-if (mesh_change == false)
+if (mesh_change == false || timestep_number == 0)
 {
 switch (time_degree)
 {
@@ -539,24 +546,49 @@ if (iteration_number == max_iterations) {deallog << "...converged in the maximum
 
 // Refine the mesh
 
+template <int dim> void dGcGblowup<dim>::refine_initial_mesh () 
+{
+while (etaS > spatial_coarsening_threshold)
+{
+dof_handler_space.distribute_dofs (fe_space);
+
+Vector<double> projection (dof_handler_space.n_dofs()); Vector<double> error (triangulation_space.n_active_cells());
+
+energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), projection);
+
+deallog << std::endl << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs() << std::endl;
+deallog << "Projecting the initial condition..." << std::endl;
+
+VectorTools::integrate_difference (dof_handler_space, projection, initialvalues<dim>(), error, QGauss<dim>(int((3*space_degree + 3)/2)), VectorTools::Linfty_norm);
+etaS = error.linfty_norm ();
+
+deallog << "Initial Linfty Error: " << etaS << std::endl;
+
+GridRefinement::refine (triangulation_space, error, spatial_coarsening_threshold);
+triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
+}	
+}
+
+// Refine the mesh
+
 template <int dim> void dGcGblowup<dim>::refine_mesh () 
 {
 const unsigned int no_of_cells = triangulation_space.n_active_cells ();
-double max = 0; double min = 1e15;
+double space_est_max = 0; double space_est_min = 1e15;
 
     for (unsigned int cell_no = 0; cell_no < no_of_cells; ++cell_no)
     {
-    max = fmax(refinement_vector(cell_no), max); min = fmin(refinement_vector(cell_no), min);
+    space_est_max = fmax(refinement_vector(cell_no), space_est_max); space_est_min = fmin(refinement_vector(cell_no), space_est_min);
     }
 
-if (max > spatial_refinement_threshold || min < spatial_coarsening_threshold)
+//if (space_est_max > spatial_refinement_threshold || space_est_min < spatial_coarsening_threshold)
 {
 GridRefinement::refine (triangulation_space, refinement_vector, spatial_refinement_threshold);
 GridRefinement::coarsen (triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
 triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
 
-if (timestep_number == 1)
+if (timestep_number == 0)
 {
 GridRefinement::refine (old_triangulation_space, refinement_vector, spatial_refinement_threshold);
 GridRefinement::coarsen (old_triangulation_space, refinement_vector, spatial_coarsening_threshold);
@@ -568,10 +600,8 @@ GridRefinement::coarsen (old_old_triangulation_space, refinement_vector, spatial
 
 old_old_triangulation_space.prepare_coarsening_and_refinement (); old_old_triangulation_space.execute_coarsening_and_refinement ();
 }
-else
-{
+
 mesh_change = true;
-}
 }
 }
 
@@ -1060,6 +1090,8 @@ refinement_vector = 0;
 
         etaS += (space_estimator_at_q_time*(2*reconstructed_solution_at_q_time.linfty_norm() + space_estimator_at_q_time) + space_derivative_estimator_values.block(q_time).linfty_norm())*fe_values_time.JxW(q_time);
         }
+
+    refinement_vector *= 1/dt;
 }
 
 template <int dim> void dGcGblowup<dim>::compute_time_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time)
@@ -1260,30 +1292,10 @@ deallog << "Temporal Polynomial Degree: " << time_degree << std::endl;
 
 deallog << std::endl << "Refining the spatial mesh based on the initial condition..." << std::endl;
 
-GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.refine_global (3);
+GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.signals.post_refinement.connect (&f); triangulation_space.refine_global (2);
+//GridGenerator::hyper_cube (triangulation_space, -9, 9); triangulation_space.refine_global (2);
 
-while (etaS > spatial_refinement_threshold)
-{
-dof_handler_space.distribute_dofs (fe_space);
-
-Vector<double> projection (dof_handler_space.n_dofs()); Vector<double> error (triangulation_space.n_active_cells());
-
-energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), projection);
-
-deallog << std::endl << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs() << std::endl;
-deallog << "Projecting the initial condition..." << std::endl;
-
-VectorTools::integrate_difference (dof_handler_space, projection, initialvalues<dim>(), error, QGauss<dim>(int((3*space_degree + 3)/2)), VectorTools::Linfty_norm);
-etaS = error.linfty_norm ();
-
-deallog << "Initial Linfty Error: " << etaS << std::endl;
-
-GridRefinement::refine (triangulation_space, error, spatial_refinement_threshold);
-GridRefinement::coarsen (triangulation_space, error, spatial_coarsening_threshold);
-triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
-}	
-
-deallog << std::endl; 
+refine_initial_mesh ();
 
 // Setup meshes
 old_triangulation_space.copy_triangulation (triangulation_space); old_old_triangulation_space.copy_triangulation (triangulation_space);
@@ -1291,26 +1303,65 @@ GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.co
 
 setup_system_full ();
 
+deallog << std::endl << "Setting up the initial mesh and time step length on the first time step..." << std::endl;
+deallog << std::endl << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs() << std::endl;
+deallog << "\u0394t: " << dt << std::endl;
+deallog << "Projecting the initial condition..." << std::endl;
+
 energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
-
-output_solution ();
-
-timestep_number = 1;
 
     for (; fabs(delta_residual) < delta_residual_threshold; ++timestep_number)
     {
     assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
 
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
+    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
 
-    while (etaT > temporal_refinement_threshold) // Half the time step until it is below the temporal refinement threshold
+    deallog << "Space Estimator: " << etaS << std::endl; // Output the value of the time estimator
+    deallog << "Time Estimator: " << etaT << std::endl; // Output the value of the time estimator
+
+    if (timestep_number == 0)
+    {
+    while (etaT > temporal_refinement_threshold || mesh_change == true)
+    {
+    mesh_change = false; refine_mesh ();
+
+    if (etaT > temporal_refinement_threshold)
+    {
+    dt = 0.5*dt; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.clear(); old_triangulation_time.copy_triangulation (triangulation_time);
+    }
+
+    setup_system_full ();
+
+    deallog << std::endl << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs() << std::endl;
+    deallog << "\u0394t: " << dt << std::endl;
+    deallog << "Projecting the initial condition..." << std::endl;
+
+    energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
+    output_solution ();
+    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
+    compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
+    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
+
+    deallog << "Space Estimator: " << etaS << std::endl; // Output the value of the time estimator
+    deallog << "Time Estimator: " << etaT << std::endl; // Output the value of the time estimator
+    }
+    }
+    else
+    {
+    if (etaT > temporal_refinement_threshold)
     {
     dt = 0.5*dt; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt);
-    if (timestep_number == 1) {dt_old = dt; old_triangulation_time.clear(); old_triangulation_time.copy_triangulation (triangulation_time); old_dof_handler_time.distribute_dofs (old_fe_time);}
+
     setup_system_time ();
     assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1);
     }
+    }
+
+    if (timestep_number == 0) {timestep_number = 1;}
+
+    output_solution (); 
 
     time = time + dt;
 
