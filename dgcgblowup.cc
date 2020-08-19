@@ -103,6 +103,7 @@ public:
 private:
 
     void setup_system_full ();
+    void setup_system_space ();
 	void setup_system_time ();
 	void create_system_matrix ();
     void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &temporal_mass_matrix) const;
@@ -158,13 +159,52 @@ template <int dim> dGcGblowup<dim>::dGcGblowup ()
 
 template <int dim> void dGcGblowup<dim>::setup_system_full () 
 {
-dof_handler.distribute_dofs (fe);
+dof_handler_space.distribute_dofs (fe_space); old_dof_handler_space.distribute_dofs (old_fe_space); old_old_dof_handler_space.distribute_dofs (old_old_fe_space);
+dof_handler_time.distribute_dofs (fe_time); old_dof_handler_time.distribute_dofs (old_fe_time);
+dof_handler.distribute_dofs (fe); old_dof_handler.distribute_dofs (old_fe); 
 
 unsigned int no_of_space_dofs = dof_handler_space.n_dofs ();
 unsigned int no_of_old_space_dofs = old_dof_handler_space.n_dofs ();
 unsigned int no_of_old_old_space_dofs = old_old_dof_handler_space.n_dofs ();
 unsigned int no_of_dofs = no_of_space_dofs*(time_degree + 1);
 unsigned int no_of_old_dofs = no_of_old_space_dofs*(time_degree + 1);
+unsigned int no_of_cells = triangulation_space.n_active_cells ();
+
+constraints.clear ();
+DoFTools::make_hanging_node_constraints (dof_handler, constraints);
+DoFTools::make_zero_boundary_constraints (dof_handler, constraints);
+constraints.close ();
+
+DynamicSparsityPattern dsp (no_of_dofs);
+DoFTools::make_sparsity_pattern (dof_handler, dsp, constraints, false);
+sparsity_pattern.copy_from (dsp);
+
+system_matrix.reinit (sparsity_pattern);
+
+reordered_solution.reinit (time_degree + 1);
+for (unsigned int i = 0; i < time_degree + 1; ++i)
+{
+reordered_solution.block(i).reinit (no_of_space_dofs);
+}
+reordered_solution.collect_sizes ();
+
+right_hand_side.reinit (no_of_dofs);
+solution.reinit (no_of_dofs);
+old_solution.reinit (no_of_old_dofs);
+solution_plus.reinit (no_of_space_dofs);
+old_solution_plus.reinit (no_of_old_space_dofs);
+old_old_solution_plus.reinit (no_of_old_old_space_dofs);
+refinement_vector.reinit (no_of_cells);
+
+create_system_matrix ();
+}
+
+template <int dim> void dGcGblowup<dim>::setup_system_space () 
+{
+dof_handler_space.distribute_dofs (fe_space); dof_handler.distribute_dofs (fe);
+
+unsigned int no_of_space_dofs = dof_handler_space.n_dofs ();
+unsigned int no_of_dofs = no_of_space_dofs*(time_degree + 1);
 unsigned int no_of_cells = triangulation_space.n_active_cells ();
 
 constraints.clear ();
@@ -185,11 +225,8 @@ reordered_solution.collect_sizes ();
 
 right_hand_side.reinit (no_of_dofs);
 solution.reinit (no_of_dofs);
-old_solution.reinit (no_of_old_dofs);
 solution_plus.reinit (no_of_space_dofs);
-old_solution_plus.reinit (no_of_old_space_dofs);
-old_old_solution_plus.reinit (no_of_old_old_space_dofs);
-refinement_vector (no_of_cells);
+refinement_vector.reinit (no_of_cells);
 }
 
 template <int dim> void dGcGblowup<dim>::setup_system_time ()
@@ -508,18 +545,23 @@ GridRefinement::refine (triangulation_space, refinement_vector, spatial_refineme
 GridRefinement::coarsen (triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
 triangulation_space.prepare_coarsening_and_refinement(); triangulation_space.execute_coarsening_and_refinement();
-dof_handler_space.distribute_dofs (fe_space); dof_handler.distribute_dofs (fe);
 
-const unsigned int no_of_dofs = dof_handler.n_dofs ();
-const unsigned int no_of_space_dofs = dof_handler_space.n_dofs ();
-const unsigned int no_of_cells = triangulation_space.n_active_cells ();
+if (timestep_number == 1)
+{
+GridRefinement::refine (old_triangulation_space, refinement_vector, spatial_refinement_threshold);
+GridRefinement::coarsen (old_triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
-right_hand_side.reinit (no_of_dofs);
-solution.reinit (no_of_dofs);
-solution_plus.reinit (no_of_space_dofs);
-refinement_vector (no_of_cells);
+old_triangulation_space.prepare_coarsening_and_refinement(); old_triangulation_space.execute_coarsening_and_refinement();
 
+GridRefinement::refine (old_old_triangulation_space, refinement_vector, spatial_refinement_threshold);
+GridRefinement::coarsen (old_old_triangulation_space, refinement_vector, spatial_coarsening_threshold);
+
+old_old_triangulation_space.prepare_coarsening_and_refinement(); old_old_triangulation_space.execute_coarsening_and_refinement();
+}
+else
+{
 mesh_change = true;
+}
 }
 
 // Output the solution
@@ -1227,12 +1269,10 @@ triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.ex
 deallog << std::endl; 
 
 // Setup meshes
-GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.copy_triangulation (triangulation_time); old_dof_handler_time.distribute_dofs (old_fe_time);
 old_triangulation_space.copy_triangulation (triangulation_space); old_old_triangulation_space.copy_triangulation (triangulation_space);
-old_dof_handler_space.distribute_dofs (old_fe_space); old_old_dof_handler_space.distribute_dofs (old_old_fe_space); old_dof_handler.distribute_dofs (old_fe); 
+GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.copy_triangulation (triangulation_time);
 
 setup_system_full ();
-setup_system_time ();
 
 energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
 
@@ -1243,6 +1283,7 @@ timestep_number = 1;
     for (; fabs(delta_residual) < delta_residual_threshold; ++timestep_number)
     {
     assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
+
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
 
     while (etaT > temporal_refinement_threshold) // Half the time step until it is below the temporal refinement threshold
@@ -1265,7 +1306,8 @@ timestep_number = 1;
     compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1);
     compute_estimator ();
 
-    old_solution = solution; old_old_solution_plus = old_solution_plus; old_solution_plus = solution_plus; temporal_refinement_threshold *= r;
+    old_solution = solution; old_old_solution_plus = old_solution_plus; old_solution_plus = solution_plus; 
+    spatial_refinement_threshold *= r; spatial_coarsening_threshold *= r; temporal_refinement_threshold *= r;
     mesh_change = false;
 
     if (dt != dt_old)
