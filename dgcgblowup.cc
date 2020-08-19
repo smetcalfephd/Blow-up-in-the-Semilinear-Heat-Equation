@@ -19,11 +19,6 @@
 #include <iostream>
 #include <fstream>
 
-void f()
-{
-  std::cout << "Triangulation has been changed" << std::endl;
-}
-
 using namespace dealii;
 
 // The initial condition
@@ -574,34 +569,30 @@ triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.ex
 template <int dim> void dGcGblowup<dim>::refine_mesh () 
 {
 const unsigned int no_of_cells = triangulation_space.n_active_cells ();
-double space_est_max = 0; double space_est_min = 1e15;
 
-    for (unsigned int cell_no = 0; cell_no < no_of_cells; ++cell_no)
-    {
-    space_est_max = fmax(refinement_vector(cell_no), space_est_max); space_est_min = fmin(refinement_vector(cell_no), space_est_min);
-    }
-
-//if (space_est_max > spatial_refinement_threshold || space_est_min < spatial_coarsening_threshold)
-{
 GridRefinement::refine (triangulation_space, refinement_vector, spatial_refinement_threshold);
-GridRefinement::coarsen (triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
 triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
+
+if (triangulation_space.n_active_cells() == no_of_cells) {mesh_change = true;}
+
+//GridRefinement::coarsen (triangulation_space, refinement_vector, spatial_coarsening_threshold);
+
+//triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
+
+// if (triangulation_space.n_active_cells() == no_of_cells) {mesh_change = true;}
 
 if (timestep_number == 0)
 {
 GridRefinement::refine (old_triangulation_space, refinement_vector, spatial_refinement_threshold);
-GridRefinement::coarsen (old_triangulation_space, refinement_vector, spatial_coarsening_threshold);
+//GridRefinement::coarsen (old_triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
 old_triangulation_space.prepare_coarsening_and_refinement (); old_triangulation_space.execute_coarsening_and_refinement ();
 
 GridRefinement::refine (old_old_triangulation_space, refinement_vector, spatial_refinement_threshold);
-GridRefinement::coarsen (old_old_triangulation_space, refinement_vector, spatial_coarsening_threshold);
+//GridRefinement::coarsen (old_old_triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
 old_old_triangulation_space.prepare_coarsening_and_refinement (); old_old_triangulation_space.execute_coarsening_and_refinement ();
-}
-
-mesh_change = true;
 }
 }
 
@@ -1292,7 +1283,7 @@ deallog << "Temporal Polynomial Degree: " << time_degree << std::endl;
 
 deallog << std::endl << "Refining the spatial mesh based on the initial condition..." << std::endl;
 
-GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.signals.post_refinement.connect (&f); triangulation_space.refine_global (2);
+GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.refine_global (2);
 //GridGenerator::hyper_cube (triangulation_space, -9, 9); triangulation_space.refine_global (2);
 
 refine_initial_mesh ();
