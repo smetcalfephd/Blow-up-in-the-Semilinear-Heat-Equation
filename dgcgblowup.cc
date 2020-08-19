@@ -92,7 +92,7 @@ public:
 	double delta_residual = 0; // The residual arising from the numerical solution of the delta equation
 
 	// Error estimator thresholds
-    double spatial_refinement_threshold = 1e-4; // The spatial refinement threshold
+    double spatial_refinement_threshold = 1e-3; // The spatial refinement threshold
     double spatial_coarsening_threshold = 0.1*std::pow(2.0, -1.0*space_degree)*spatial_refinement_threshold; // The spatial coarsening threshold
 	double temporal_refinement_threshold = 1e-3; // The temporal refinement threshold
 	double delta_residual_threshold = 1e-04; // The threshold for the delta equation residual above which we consider the delta equation as having no root
@@ -541,26 +541,37 @@ if (iteration_number == max_iterations) {deallog << "...converged in the maximum
 
 template <int dim> void dGcGblowup<dim>::refine_mesh () 
 {
+const unsigned int no_of_cells = triangulation_space.n_active_cells ();
+double max = 0; double min = 1e15;
+
+    for (unsigned int cell_no = 0; cell_no < no_of_cells; ++cell_no)
+    {
+    max = fmax(refinement_vector(cell_no), max); min = fmin(refinement_vector(cell_no), min);
+    }
+
+if (max > spatial_refinement_threshold || min < spatial_coarsening_threshold)
+{
 GridRefinement::refine (triangulation_space, refinement_vector, spatial_refinement_threshold);
 GridRefinement::coarsen (triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
-triangulation_space.prepare_coarsening_and_refinement(); triangulation_space.execute_coarsening_and_refinement();
+triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
 
 if (timestep_number == 1)
 {
 GridRefinement::refine (old_triangulation_space, refinement_vector, spatial_refinement_threshold);
 GridRefinement::coarsen (old_triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
-old_triangulation_space.prepare_coarsening_and_refinement(); old_triangulation_space.execute_coarsening_and_refinement();
+old_triangulation_space.prepare_coarsening_and_refinement (); old_triangulation_space.execute_coarsening_and_refinement ();
 
 GridRefinement::refine (old_old_triangulation_space, refinement_vector, spatial_refinement_threshold);
 GridRefinement::coarsen (old_old_triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
-old_old_triangulation_space.prepare_coarsening_and_refinement(); old_old_triangulation_space.execute_coarsening_and_refinement();
+old_old_triangulation_space.prepare_coarsening_and_refinement (); old_old_triangulation_space.execute_coarsening_and_refinement ();
 }
 else
 {
 mesh_change = true;
+}
 }
 }
 
@@ -760,6 +771,7 @@ if (time_degree > 0)
 
 double h = 0; double h_min = GridTools::minimal_cell_diameter (triangulation_space); double ell_h = log(2 + 1/h_min); double C_cell = 0; double C_edge = 0;
 etaS = 0; double space_estimator_jump_value = 0; double nonlinearity_value = 0;
+refinement_vector = 0;
 
     for (; cell != final_cell; ++cell, ++space_cell)
     {
@@ -1041,6 +1053,11 @@ etaS = 0; double space_estimator_jump_value = 0; double nonlinearity_value = 0;
 
         double space_estimator_at_q_time = space_estimator_values.block(q_time).linfty_norm();
 
+            for (unsigned int cell_no = 0; cell_no < no_of_cells; ++cell_no)
+            {
+            refinement_vector(cell_no) += (space_estimator_values.block(q_time)(cell_no)*(2*reconstructed_solution_at_q_time.linfty_norm() + space_estimator_at_q_time) + space_derivative_estimator_values.block(q_time)(cell_no))*fe_values_time.JxW(q_time);
+            }
+
         etaS += (space_estimator_at_q_time*(2*reconstructed_solution_at_q_time.linfty_norm() + space_estimator_at_q_time) + space_derivative_estimator_values.block(q_time).linfty_norm())*fe_values_time.JxW(q_time);
         }
 }
@@ -1305,6 +1322,8 @@ timestep_number = 1;
     output_solution ();
     compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1);
     compute_estimator ();
+
+    deallog << std::endl;
 
     old_solution = solution; old_old_solution_plus = old_solution_plus; old_solution_plus = solution_plus; 
     spatial_refinement_threshold *= r; spatial_coarsening_threshold *= r; temporal_refinement_threshold *= r;
