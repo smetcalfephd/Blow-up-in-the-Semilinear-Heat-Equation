@@ -568,8 +568,6 @@ triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.ex
 
 template <int dim> void dGcGblowup<dim>::refine_mesh () 
 {
-const unsigned int no_of_cells = triangulation_space.n_active_cells ();
-
 GridRefinement::refine (triangulation_space, refinement_vector, spatial_refinement_threshold);
 GridRefinement::coarsen (triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
@@ -1298,35 +1296,15 @@ refine_initial_mesh ();
 old_triangulation_space.copy_triangulation (triangulation_space); old_old_triangulation_space.copy_triangulation (triangulation_space);
 GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.copy_triangulation (triangulation_time);
 
-setup_system_full ();
-
 deallog << std::endl << "Setting up the initial mesh and time step length on the first time step..." << std::endl;
-deallog << std::endl << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs() << std::endl;
-deallog << "\u0394t: " << dt << std::endl;
-deallog << "Projecting the initial condition..." << std::endl;
-
-energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
 
     for (; fabs(delta_residual) < delta_residual_threshold; ++timestep_number)
     {
-    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
-
-    compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
-    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
-
-    deallog << "Space Estimator: " << etaS << std::endl; // Output the value of the time estimator
-    deallog << "Time Estimator: " << etaT << std::endl; // Output the value of the time estimator
-
     if (timestep_number == 0)
     {
-    while (etaT > temporal_refinement_threshold || mesh_change == true)
+    while (mesh_change == true)
     {
-    mesh_change = false; refine_mesh ();
-
-    if (etaT > temporal_refinement_threshold)
-    {
-    dt = 0.5*dt; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.clear(); old_triangulation_time.copy_triangulation (triangulation_time);
-    }
+    mesh_change = false;
 
     setup_system_full ();
 
@@ -1337,28 +1315,39 @@ energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus
     energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
     output_solution ();
     assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
-    compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
     compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
+    compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
 
     deallog << "Space Estimator: " << etaS << std::endl; // Output the value of the time estimator
     deallog << "Time Estimator: " << etaT << std::endl; // Output the value of the time estimator
+
+    refine_mesh ();
+
+    if (etaT > temporal_refinement_threshold)
+    {
+    dt = 0.5*dt; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.clear(); old_triangulation_time.copy_triangulation (triangulation_time);
+    mesh_change = true;
+    }
     }
     }
     else
     {
+    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
+    compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
+
     if (etaT > temporal_refinement_threshold)
     {
     dt = 0.5*dt; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt);
 
     setup_system_time ();
     assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
-    compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1);
+    compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
     }
+
+    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
     }
 
     if (timestep_number == 0) {timestep_number = 1;}
-
-    output_solution (); 
 
     time = time + dt;
 
@@ -1368,10 +1357,7 @@ energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus
     deallog << "\u0394t: " << dt << std::endl;
 
     output_solution ();
-    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1);
     compute_estimator ();
-
-    deallog << std::endl;
 
     old_solution = solution; old_old_solution_plus = old_solution_plus; old_solution_plus = solution_plus; 
     spatial_refinement_threshold *= r; spatial_coarsening_threshold *= r; temporal_refinement_threshold *= r;
