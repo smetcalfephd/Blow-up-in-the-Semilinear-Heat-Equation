@@ -104,14 +104,13 @@ public:
 private:
 
     void setup_system_full ();
-//    void setup_system_space ();
 	void setup_system_time ();
 	void create_system_matrix ();
     void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &temporal_mass_matrix) const;
 	void create_time_derivative_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &time_derivative_matrix) const;
-    void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection);
+    void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const;
 	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol);
-    void refine_initial_mesh ();
+    void refine_initial_mesh (); 
     void refine_mesh ();
 	void output_solution () const; // Output the solution
 	void get_spacetime_function_values (const Vector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices, Vector<double> &spacetime_fe_function_values) const;
@@ -159,7 +158,7 @@ template <int dim> dGcGblowup<dim>::dGcGblowup ()
 				fe (fe_space, time_degree + 1), old_fe (old_fe_space, time_degree + 1)
 {}
 
-template <int dim> void dGcGblowup<dim>::setup_system_full () 
+template <int dim> void dGcGblowup<dim>::setup_system_full ()
 {
 dof_handler_space.distribute_dofs (fe_space); old_dof_handler_space.distribute_dofs (old_fe_space); old_old_dof_handler_space.distribute_dofs (old_old_fe_space);
 dof_handler_time.distribute_dofs (fe_time); old_dof_handler_time.distribute_dofs (old_fe_time);
@@ -200,36 +199,6 @@ refinement_vector.reinit (no_of_cells);
 
 create_system_matrix ();
 }
-
-//template <int dim> void dGcGblowup<dim>::setup_system_space () 
-//{
-//dof_handler_space.distribute_dofs (fe_space); dof_handler.distribute_dofs (fe);
-
-//unsigned int no_of_space_dofs = dof_handler_space.n_dofs ();
-//unsigned int no_of_dofs = no_of_space_dofs*(time_degree + 1);
-//unsigned int no_of_cells = triangulation_space.n_active_cells ();
-
-//constraints.clear ();
-//DoFTools::make_hanging_node_constraints (dof_handler, constraints);
-//DoFTools::make_zero_boundary_constraints (dof_handler, constraints);
-//constraints.close ();
-
-//DynamicSparsityPattern dsp (no_of_dofs);
-//DoFTools::make_sparsity_pattern (dof_handler, dsp, constraints, false);
-//sparsity_pattern.copy_from (dsp);
-
-//reordered_solution.reinit (time_degree + 1);
-//for (unsigned int i = 0; i < time_degree + 1; ++i)
-//{
-//reordered_solution.block(i).reinit (no_of_space_dofs);
-//}
-//reordered_solution.collect_sizes ();
-
-//right_hand_side.reinit (no_of_dofs);
-//solution.reinit (no_of_dofs);
-//solution_plus.reinit (no_of_space_dofs);
-//refinement_vector.reinit (no_of_cells);
-//}
 
 template <int dim> void dGcGblowup<dim>::setup_system_time ()
 {
@@ -351,7 +320,7 @@ typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_
             }
 }
 
-template <int dim> void dGcGblowup<dim>::energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection)
+template <int dim> void dGcGblowup<dim>::energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const
 {
 const QGauss<dim> quadrature_formula_space (no_q_space_x);
 
@@ -541,7 +510,7 @@ if (iteration_number == max_iterations) {deallog << "...converged in the maximum
 
 // Refine the mesh
 
-template <int dim> void dGcGblowup<dim>::refine_initial_mesh () 
+template <int dim> void dGcGblowup<dim>::refine_initial_mesh ()
 {
 while (etaS > spatial_coarsening_threshold)
 {
@@ -566,7 +535,7 @@ triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.ex
 
 // Refine the mesh
 
-template <int dim> void dGcGblowup<dim>::refine_mesh () 
+template <int dim> void dGcGblowup<dim>::refine_mesh ()
 {
 GridRefinement::refine (triangulation_space, refinement_vector, spatial_refinement_threshold);
 GridRefinement::coarsen (triangulation_space, refinement_vector, spatial_coarsening_threshold);
