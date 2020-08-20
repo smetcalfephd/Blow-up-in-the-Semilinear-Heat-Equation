@@ -614,12 +614,12 @@ template <int dim> void dGcGblowup<dim>::prepare_for_next_time_step ()
 {
 if (dt != dt_old)
 {
-dt_old = dt; old_triangulation_time.clear(); old_triangulation_time.copy_triangulation(triangulation_time); old_dof_handler_time.distribute_dofs (old_fe_time);
+dt_old = dt; old_triangulation_time.clear (); old_triangulation_time.copy_triangulation (triangulation_time); old_dof_handler_time.distribute_dofs (old_fe_time);
 }
 
 if (old_mesh_change == true)
 {
-old_old_triangulation_space.copy_triangulation (old_triangulation_space);
+old_old_triangulation_space.clear (); old_old_triangulation_space.copy_triangulation (old_triangulation_space);
 old_old_dof_handler_space.distribute_dofs (old_old_fe_space);
 
 const unsigned int no_of_old_old_space_dofs = old_old_dof_handler_space.n_dofs ();
@@ -634,7 +634,7 @@ old_old_solution_plus = old_solution_plus;
 
 if (mesh_change == true)
 {
-old_triangulation_space.copy_triangulation (triangulation_space);
+old_triangulation_space.clear (); old_triangulation_space.copy_triangulation (triangulation_space);
 old_dof_handler_space.distribute_dofs (old_fe_space); old_dof_handler.distribute_dofs (old_fe);
 
 const unsigned int no_of_old_space_dofs = old_dof_handler_space.n_dofs ();
@@ -1397,6 +1397,17 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
     }
 
     compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
+//    refine_mesh ();
+
+//    if (mesh_change == true || etaT > temporal_refinement_threshold)
+//    {
+//    setup_system_partial ();
+//    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
+//    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
+//    compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
+//    }
+
+
     }
 
     if (timestep_number == 0) {timestep_number = 1;}
