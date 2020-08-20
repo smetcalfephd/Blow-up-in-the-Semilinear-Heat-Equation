@@ -164,12 +164,12 @@ dof_handler_space.distribute_dofs (fe_space); old_dof_handler_space.distribute_d
 dof_handler_time.distribute_dofs (fe_time); old_dof_handler_time.distribute_dofs (old_fe_time);
 dof_handler.distribute_dofs (fe); old_dof_handler.distribute_dofs (old_fe); 
 
-unsigned int no_of_space_dofs = dof_handler_space.n_dofs ();
-unsigned int no_of_old_space_dofs = old_dof_handler_space.n_dofs ();
-unsigned int no_of_old_old_space_dofs = old_old_dof_handler_space.n_dofs ();
-unsigned int no_of_dofs = no_of_space_dofs*(time_degree + 1);
-unsigned int no_of_old_dofs = no_of_old_space_dofs*(time_degree + 1);
-unsigned int no_of_cells = triangulation_space.n_active_cells ();
+const unsigned int no_of_space_dofs = dof_handler_space.n_dofs ();
+const unsigned int no_of_old_space_dofs = old_dof_handler_space.n_dofs ();
+const unsigned int no_of_old_old_space_dofs = old_old_dof_handler_space.n_dofs ();
+const unsigned int no_of_dofs = no_of_space_dofs*(time_degree + 1);
+const unsigned int no_of_old_dofs = no_of_old_space_dofs*(time_degree + 1);
+const unsigned int no_of_cells = triangulation_space.n_active_cells ();
 
 constraints.clear ();
 DoFTools::make_hanging_node_constraints (dof_handler, constraints);
@@ -384,7 +384,7 @@ typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.be
             laplace_matrix (local_dof_indices_space[i], local_dof_indices_space[j]) += local_laplace_matrix(i,j);
             }
 
-        right_hand_side(local_dof_indices_space[i]) += local_right_hand_side(i);    
+        right_hand_side (local_dof_indices_space[i]) += local_right_hand_side(i);    
         }
     }
 
@@ -421,7 +421,7 @@ std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
 Functions::FEFieldFunction<dim> old_solution_plus_function (old_dof_handler_space, old_solution_plus);
 
-if (mesh_change == false || timestep_number == 0)
+if (mesh_change == false)
 {
 switch (time_degree)
 {
@@ -523,7 +523,7 @@ energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), projection);
 deallog << std::endl << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs() << std::endl;
 deallog << "Projecting the initial condition..." << std::endl;
 
-VectorTools::integrate_difference (dof_handler_space, projection, initialvalues<dim>(), error, QGauss<dim>(int((3*space_degree + 3)/2)), VectorTools::Linfty_norm);
+VectorTools::integrate_difference (dof_handler_space, projection, initialvalues<dim>(), error, QGauss<dim>(int((3*space_degree + 3)/2) + 1), VectorTools::Linfty_norm);
 etaS = error.linfty_norm ();
 
 deallog << "Initial Linfty Error: " << etaS << std::endl;
@@ -542,6 +542,12 @@ GridRefinement::coarsen (triangulation_space, refinement_vector, spatial_coarsen
 
 triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
 
+if (triangulation_space.n_active_cells() != old_triangulation_space.n_active_cells()) 
+{
+mesh_change = true;
+}
+else
+{
 typename Triangulation<dim>::active_cell_iterator space_cell = triangulation_space.begin_active (), final_cell = triangulation_space.end ();
 typename Triangulation<dim>::active_cell_iterator old_space_cell = old_triangulation_space.begin_active ();
 
@@ -554,6 +560,7 @@ typename Triangulation<dim>::active_cell_iterator old_space_cell = old_triangula
 
     if (mesh_change == true) {break;}
     }
+}
 
 if (timestep_number == 0)
 {
