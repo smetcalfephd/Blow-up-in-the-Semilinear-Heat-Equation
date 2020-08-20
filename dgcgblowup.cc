@@ -1385,7 +1385,10 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
     else
     {
     assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
+//    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
+
+//    refine_mesh ();
 
     if (etaT > temporal_refinement_threshold)
     {
@@ -1397,16 +1400,14 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
     }
 
     compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
-//    refine_mesh ();
 
-//    if (mesh_change == true || etaT > temporal_refinement_threshold)
+ //   if (mesh_change == true || etaT > temporal_refinement_threshold)
 //    {
 //    setup_system_partial ();
 //    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
 //    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
 //    compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
 //    }
-
 
     }
 
