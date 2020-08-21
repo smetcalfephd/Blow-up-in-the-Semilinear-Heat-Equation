@@ -116,7 +116,7 @@ private:
     void prepare_for_next_time_step ();
 	void output_solution () const; // Output the solution
 	void get_spacetime_function_values (const Vector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices, Vector<double> &spacetime_fe_function_values) const;
-	void reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, DoFHandler<dim> &dof_handler_space, DoFHandler<dim> &dof_handler, const FESystem<dim> &fe);
+	void reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, const DoFHandler<dim> &dof_handler_space, const DoFHandler<dim> &dof_handler, const FESystem<dim> &fe) const;
 	void extend_to_constant_in_time_function (Vector<double> &fe_function, Vector<double> &spacetime_fe_function) const;
 	void compute_Q_values (const unsigned int &degree, const double &point, double &Q_value, double &Q_derivative_value, double &Q_second_derivative_value) const;
 	void compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time);
@@ -686,7 +686,7 @@ spacetime_fe_function_values = 0;
     }
 }
 
-template <int dim> void dGcGblowup<dim>::reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, DoFHandler<dim> &dof_handler_space, DoFHandler<dim> &dof_handler, const FESystem<dim> &fe)
+template <int dim> void dGcGblowup<dim>::reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, const DoFHandler<dim> &dof_handler_space, const DoFHandler<dim> &dof_handler, const FESystem<dim> &fe) const
 {
 const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
@@ -1963,9 +1963,6 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
     compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
 
-    deallog << "Space Estimator: " << etaS << std::endl; // Output the value of the time estimator
-    deallog << "Time Estimator: " << etaT << std::endl; // Output the value of the time estimator
-
     refine_mesh ();
 
     if (etaT > temporal_refinement_threshold)
@@ -1975,13 +1972,15 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
 
     if (mesh_change == true || etaT > temporal_refinement_threshold)
     {
+    deallog << std::endl;
+    if (mesh_change == true) {deallog << "The mesh has changed. ";}
+    if (etaT > temporal_refinement_threshold) {deallog << "The time step length has changed. ";}
+    deallog << "Recomputing the solution..." << std::endl << std::endl;
+
     setup_system_partial ();
     assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
-
-    deallog << "Space Estimator: " << etaS << std::endl; // Output the value of the time estimator
-    deallog << "Time Estimator: " << etaT << std::endl; // Output the value of the time estimator
     }
 
     }
