@@ -1145,7 +1145,6 @@ template <int dim> void dGcGblowup<dim>::compute_time_estimator (const unsigned 
 {
 const QGaussLobatto<dim> quadrature_formula_space (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
 
-FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values | update_quadrature_points);
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_quadrature_points | update_JxW_values);
 FEValues<1> old_fe_values_time (old_fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
 
@@ -1181,6 +1180,10 @@ fe_values_time.reinit (time_cell); old_fe_values_time.reinit (old_time_cell);
     {
     compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values(q_time), Q_derivative_values(q_time), etaT);
     }
+
+if (mesh_change == false && old_mesh_change == false)
+{
+FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values | update_quadrature_points);
 
 typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (), final_cell = dof_handler.end ();
 typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active ();
@@ -1267,6 +1270,136 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double nonlinearity_value = 
             }
         }
     }
+}
+else
+{
+Triangulation<dim> union_triangulation;
+
+if (mesh_change == true && old_mesh_change == false)
+{
+GridGenerator::create_union_triangulation (triangulation_space, old_triangulation_space, union_triangulation);
+}
+if (mesh_change == false && old_mesh_change == true)
+{
+GridGenerator::create_union_triangulation (triangulation_space, old_old_triangulation_space, union_triangulation);
+}
+if (mesh_change == true && old_mesh_change == true)
+{
+Triangulation<dim> intermediate_triangulation; 
+GridGenerator::create_union_triangulation (old_old_triangulation_space, old_triangulation_space, intermediate_triangulation);
+GridGenerator::create_union_triangulation (triangulation_space, intermediate_triangulation, union_triangulation);
+}
+
+DoFHandler<dim> dof_handler_space_union (union_triangulation); FE_Q<dim> fe_space_union (space_degree); dof_handler_space_union.distribute_dofs (fe_space_union);
+DoFHandler<dim> dof_handler_union (union_triangulation); FESystem<dim> fe_union (fe_space_union, time_degree + 1); dof_handler_union.distribute_dofs (fe_union);
+
+FEValues<dim> fe_values_space_union (fe_space_union, quadrature_formula_space, update_values | update_quadrature_points);
+
+const unsigned int no_of_union_space_dofs = dof_handler_space_union.n_dofs ();
+const unsigned int no_of_union_dofs = no_of_union_space_dofs*(time_degree + 1);
+
+ConstraintMatrix spatial_union_constraints, union_constraints;
+
+spatial_union_constraints.clear ();
+DoFTools::make_hanging_node_constraints (dof_handler_space_union, spatial_union_constraints);
+DoFTools::make_zero_boundary_constraints (dof_handler_space_union, spatial_union_constraints);
+spatial_union_constraints.close ();
+
+union_constraints.clear ();
+DoFTools::make_hanging_node_constraints (dof_handler_union, union_constraints);
+DoFTools::make_zero_boundary_constraints (dof_handler_union, union_constraints);
+union_constraints.close ();
+
+Vector<double> solution_union (no_of_union_dofs);
+Vector<double> old_solution_union (no_of_union_dofs);
+Vector<double> solution_plus_union (no_of_union_space_dofs);
+Vector<double> old_solution_plus_union (no_of_union_space_dofs);
+Vector<double> old_old_solution_plus_union (no_of_union_space_dofs);
+
+VectorTools::interpolate_to_different_mesh (dof_handler_space, solution_plus, dof_handler_space_union, spatial_union_constraints, solution_plus_union);
+VectorTools::interpolate_to_different_mesh (old_dof_handler_space, old_solution_plus, dof_handler_space_union, spatial_union_constraints, old_solution_plus_union);
+VectorTools::interpolate_to_different_mesh (old_old_dof_handler_space, old_old_solution_plus, dof_handler_space_union, spatial_union_constraints, old_old_solution_plus_union);
+VectorTools::interpolate_to_different_mesh (dof_handler, solution, dof_handler_union, union_constraints, solution_union);
+VectorTools::interpolate_to_different_mesh (old_dof_handler, old_solution, dof_handler_union, union_constraints, old_solution_union);
+
+typename DoFHandler<dim>::active_cell_iterator union_cell = dof_handler_union.begin_active (), final_cell = dof_handler_union.end ();
+typename DoFHandler<dim>::active_cell_iterator union_space_cell = dof_handler_space_union.begin_active ();
+
+etaT = 0; double discrete_laplacian_jump_value = 0; double nonlinearity_value = 0; double solution_time_derivative_value = 0;
+
+    for (; union_cell != final_cell; ++union_cell, ++union_space_cell)
+    {
+    fe_values_space_union.reinit (union_space_cell);
+
+    union_cell->get_dof_indices (local_dof_indices);
+
+    get_spacetime_function_values (solution_union, fe_values_space_union, fe_values_time, local_dof_indices, solution_values);
+    get_spacetime_function_values (old_solution_union, fe_values_space_union, old_fe_values_time, local_dof_indices, old_solution_values); 
+    fe_values_space_union.get_function_values (old_old_solution_plus_union, old_old_solution_plus_values);
+
+        for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+        {
+        switch (time_degree) {case 0: L2_projection_f(time_degree) = old_solution_values(q_space)*old_solution_values(q_space); break;
+        default: L2_projection_f(time_degree) = 0; L2_projection_rhs = 0; solution_time_derivative_value = 0;
+
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+            {
+            nonlinearity_value = old_solution_values(q_space+q_time*no_q_space)*old_solution_values(q_space+q_time*no_q_space)*old_fe_values_time.JxW(q_time);
+
+	            for (unsigned int i = 0; i < time_degree + 1; ++i)
+	            {
+	            L2_projection_rhs(i) += nonlinearity_value*old_fe_values_time.shape_value(i, q_time);
+	            }
+            }
+
+            for (unsigned int i = 0; i < time_degree + 1; ++i)
+            {
+            L2_projection_f(time_degree) += old_temporal_mass_matrix_inv(time_degree, i)*L2_projection_rhs(i);
+            }
+
+	        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            {
+            const unsigned int comp_s_i = fe_union.system_to_component_index(i).second; const unsigned int comp_t_i = fe_union.system_to_component_index(i).first;
+
+            solution_time_derivative_value += old_solution_union(local_dof_indices[i])*fe_values_space_union.shape_value(comp_s_i, q_space)*old_fe_values_time.shape_grad(comp_t_i, no_q_time - 1)[0];
+            }
+        }
+
+        discrete_laplacian_jump_value = -L2_projection_f(time_degree) + solution_time_derivative_value + (1/dt_old)*Q_derivative_values(no_q_time-1)*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
+
+        switch (time_degree) {case 0: for (unsigned int q_time = 0; q_time < no_q_time; ++q_time) {L2_projection_f_values[q_time] = solution_values(q_space)*solution_values(q_space);} break;
+        default: L2_projection_rhs = 0; solution_time_derivative_value = 0;
+
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+            {
+            nonlinearity_value = solution_values(q_space+q_time*no_q_space)*solution_values(q_space+q_time*no_q_space)*fe_values_time.JxW(q_time);
+
+                for (unsigned int i = 0; i < time_degree + 1; ++i)
+                {
+                L2_projection_rhs(i) += nonlinearity_value*fe_values_time.shape_value(i, q_time);
+     	        }
+            }
+
+        temporal_mass_matrix_inv.vmult (L2_projection_f, L2_projection_rhs);
+        fe_values_time.get_function_values (L2_projection_f, L2_projection_f_values);
+
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            {
+            const unsigned int comp_s_i = fe.system_to_component_index(i).second; const unsigned int comp_t_i = fe.system_to_component_index(i).first;
+
+            solution_time_derivative_value += solution_union(local_dof_indices[i])*fe_values_space_union.shape_value(comp_s_i, q_space)*fe_values_time.shape_grad(comp_t_i, 0)[0];
+            }
+        }
+
+        discrete_laplacian_jump_value += L2_projection_f_values[0] - solution_time_derivative_value - (1/dt)*Q_derivative_values(0)*(solution_values(q_space) - old_solution_values(q_space+(no_q_time-1)*no_q_space));
+
+            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+            {
+            estimator_values(q_time) = fmax(estimator_values(q_time), fabs((solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space)))*(solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space))) - L2_projection_f_values[q_time] - Q_values(q_time)*discrete_laplacian_jump_value));
+            }
+        }
+    }
+}
 
     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
     {
@@ -1385,29 +1518,33 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
     else
     {
     assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
-//    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
+    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
 
-//    refine_mesh ();
+    deallog << "Time Estimator: " << etaT << std::endl; // Output the value of the time estimator
+
+    refine_mesh ();
 
     if (etaT > temporal_refinement_threshold)
     {
     dt = 0.5*dt; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt);
 
-    setup_system_partial ();
-    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
-    compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
-    }
-
-    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
-
- //   if (mesh_change == true || etaT > temporal_refinement_threshold)
-//    {
 //    setup_system_partial ();
 //    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
-//    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
 //    compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
-//    }
+    }
+
+//    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
+
+    if (mesh_change == true || etaT > temporal_refinement_threshold)
+    {
+    setup_system_partial ();
+    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
+//    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
+    compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
+
+    deallog << "Time Estimator: " << etaT << std::endl; // Output the value of the time estimator
+    }
 
     }
 
