@@ -1539,7 +1539,7 @@ auto cell_iter = cell_list.begin();
 
         for (unsigned int subcell = 0; subcell < no_of_subcells; ++subcell)
         {
-        refinement_vector(cell_iter->first->active_cell_index()) = refinement_union_vector(cell_iter->second->child(subcell)->active_cell_index());
+        refinement_vector(cell_iter->first->active_cell_index()) = fmax(refinement_vector(cell_iter->first->active_cell_index()), refinement_union_vector(cell_iter->second->child(subcell)->active_cell_index()));
         }
     }
     }
