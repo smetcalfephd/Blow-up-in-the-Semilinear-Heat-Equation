@@ -119,7 +119,7 @@ private:
 	void reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, const DoFHandler<dim> &dof_handler_space, const DoFHandler<dim> &dof_handler, const FESystem<dim> &fe) const;
 	void extend_to_constant_in_time_function (Vector<double> &fe_function, Vector<double> &spacetime_fe_function) const;
 	void compute_Q_values (const unsigned int &degree, const double &point, double &Q_value, double &Q_derivative_value, double &Q_second_derivative_value) const;
-	void compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time);
+	void compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const bool output_refinement_vector);
 	void compute_time_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time);
 	void compute_estimator ();
 
@@ -753,7 +753,7 @@ default: double value = 0; double old_value = point; double old_old_value = 1.0;
 Q_value *= 0.5*std::pow(-1, degree); Q_derivative_value *= std::pow(-1, degree); Q_second_derivative_value *= 2*std::pow(-1, degree);
 }
 
-template <int dim> void dGcGblowup<dim>::compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time)
+template <int dim> void dGcGblowup<dim>::compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const bool output_refinement_vector)
 {
 const QGaussLobatto<dim> quadrature_formula_space (no_q_space_x); const QGaussLobatto<dim-1> quadrature_formula_space_face (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
 
@@ -852,7 +852,7 @@ if (time_degree > 0)
 
 double h = 0; double h_min = GridTools::minimal_cell_diameter (triangulation_space); double ell_h = log(2 + 1/h_min); double C_cell = 0; double C_edge = 0;
 etaS = 0; double space_estimator_jump_value = 0; double nonlinearity_value = 0;
-refinement_vector = 0;
+if (output_refinement_vector == true) {refinement_vector = 0;}
 
     for (; cell != final_cell; ++cell, ++space_cell)
     {
@@ -1134,16 +1134,19 @@ Vector<double> reconstructed_solution_at_q_time (no_of_space_dofs);
 
     double space_estimator_at_q_time = space_estimator_values.block(q_time).linfty_norm();
     double reconstructed_solution_at_q_time_linfty = reconstructed_solution_at_q_time.linfty_norm();
-
+        
+        if (output_refinement_vector == true)
+        {
         for (unsigned int cell_no = 0; cell_no < no_of_cells; ++cell_no)
         {
         refinement_vector(cell_no) += (space_estimator_values.block(q_time)(cell_no)*(2*reconstructed_solution_at_q_time_linfty + space_estimator_at_q_time) + space_derivative_estimator_values.block(q_time)(cell_no))*fe_values_time.JxW(q_time);
+        }
         }
 
     etaS += (space_estimator_at_q_time*(2*reconstructed_solution_at_q_time_linfty + space_estimator_at_q_time) + space_derivative_estimator_values.block(q_time).linfty_norm())*fe_values_time.JxW(q_time);
     }
 
-refinement_vector *= 1/dt;
+if (output_refinement_vector == true) {refinement_vector *= 1/dt;}
 }
 else
 {
@@ -1241,7 +1244,7 @@ typename DoFHandler<dim>::active_cell_iterator union_space_cell = dof_handler_sp
 
 double h = 0; double h_min = GridTools::minimal_cell_diameter (union_triangulation); double ell_h = log(2 + 1/h_min); double C_cell = 0; double C_edge = 0;
 etaS = 0; double space_estimator_jump_value = 0; double nonlinearity_value = 0;
-refinement_vector = 0;
+if (output_refinement_vector == true) {refinement_vector = 0;}
 
     for (; union_cell != final_cell; ++union_cell, ++union_space_cell)
     {
@@ -1514,35 +1517,39 @@ Vector<double> refinement_union_vector (no_of_union_cells);
     double space_estimator_at_q_time = space_estimator_values.block(q_time).linfty_norm();
     double reconstructed_solution_at_q_time_linfty = reconstructed_solution_at_q_time.linfty_norm();
 
+        if (output_refinement_vector == true)
+        {
         for (unsigned int cell_no = 0; cell_no < no_of_union_cells; ++cell_no)
         {
         refinement_union_vector(cell_no) += (space_estimator_values.block(q_time)(cell_no)*(2*reconstructed_solution_at_q_time_linfty + space_estimator_at_q_time) + space_derivative_estimator_values.block(q_time)(cell_no))*fe_values_time.JxW(q_time);
+        }
         }
 
     etaS += (space_estimator_at_q_time*(2*reconstructed_solution_at_q_time_linfty + space_estimator_at_q_time) + space_derivative_estimator_values.block(q_time).linfty_norm())*fe_values_time.JxW(q_time);
     }
 
-refinement_union_vector *= 1/dt;
+if (output_refinement_vector == true) {refinement_union_vector *= 1/dt;
 
 const std::list<std::pair<typename Triangulation<dim>::cell_iterator, typename Triangulation<dim>::cell_iterator>> cell_list = GridTools::get_finest_common_cells (triangulation_space, union_triangulation);
-auto cell_iter = cell_list.begin();
+auto cell_pair = cell_list.begin(); auto final_cell_pair = cell_list.end();
 
-    for (; cell_iter != cell_list.end(); ++cell_iter)
+    for (; cell_pair != final_cell_pair; ++cell_pair)
     {
-    if (cell_iter->second->has_children () == false)
+    if (cell_pair->second->has_children () == false)
     {
-    refinement_vector(cell_iter->first->active_cell_index()) = refinement_union_vector(cell_iter->second->active_cell_index());
+    refinement_vector(cell_pair->first->active_cell_index()) = refinement_union_vector(cell_pair->second->active_cell_index());
     }
     else
     {
-    auto active_subcells = GridTools::get_active_child_cells<Triangulation<dim>> (cell_iter->second);
+    auto active_subcells = GridTools::get_active_child_cells<Triangulation<dim>> (cell_pair->second);
 
         for (unsigned int subcell = 0; subcell < active_subcells.size(); ++subcell)
         {
-        refinement_vector(cell_iter->first->active_cell_index()) = fmax(refinement_vector(cell_iter->first->active_cell_index()), refinement_union_vector(active_subcells[subcell]->active_cell_index()));
+        refinement_vector(cell_pair->first->active_cell_index()) = fmax(refinement_vector(cell_pair->first->active_cell_index()), refinement_union_vector(active_subcells[subcell]->active_cell_index()));
         }
     }
     }
+}
 }
 }
 
@@ -1942,7 +1949,7 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
     energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
     output_solution ();
     assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
+    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1, true); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
 
     deallog << "Space Estimator: " << etaS << std::endl; // Output the value of the time estimator
@@ -1960,7 +1967,7 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
     else
     {
     assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
+    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1, true); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
 
     refine_mesh ();
@@ -1979,7 +1986,7 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
 
     setup_system_partial ();
     assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the space estimator
+    compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1, false); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
     }
 
