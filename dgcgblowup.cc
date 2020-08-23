@@ -1535,11 +1535,11 @@ auto cell_iter = cell_list.begin();
     }
     else
     {
-    const unsigned int no_of_subcells = cell_iter->second->n_children();
+    auto active_subcells = GridTools::get_active_child_cells<Triangulation<dim>> (cell_iter->second);
 
-        for (unsigned int subcell = 0; subcell < no_of_subcells; ++subcell)
+        for (unsigned int subcell = 0; subcell < active_subcells.size(); ++subcell)
         {
-        refinement_vector(cell_iter->first->active_cell_index()) = fmax(refinement_vector(cell_iter->first->active_cell_index()), refinement_union_vector(cell_iter->second->child(subcell)->active_cell_index()));
+        refinement_vector(cell_iter->first->active_cell_index()) = fmax(refinement_vector(cell_iter->first->active_cell_index()), refinement_union_vector(active_subcells[subcell]->active_cell_index()));
         }
     }
     }
