@@ -113,8 +113,8 @@ private:
 	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol); // Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solutions is below rel_tol*max(U)
     void refine_initial_mesh (); // Refines the initial mesh and recomputes the energy projection of the initial condition until ||u_0 - U_0|| < spatial_coarsening_threshold
     void refine_mesh (); // Refines all cells with refinement_vector(cell_no) > spatial_refinement_threshold and coarsens all cells with refinement_vector(cell_no) < spatial_coarsening_threshold
-    void prepare_for_next_time_step ();
-	void output_solution () const; // Output the solution
+    void prepare_for_next_time_step (); // Prepares the vectors, triangulations and dof_handlers for the next time step by setting them to previous values
+	void output_solution () const; // Outputs the solution at 
 	void get_spacetime_function_values (const Vector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices, Vector<double> &spacetime_fe_function_values) const;
 	void reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, const DoFHandler<dim> &dof_handler_space, const DoFHandler<dim> &dof_handler, const FESystem<dim> &fe) const;
 	void extend_to_constant_in_time_function (Vector<double> &fe_function, Vector<double> &spacetime_fe_function) const;
@@ -636,21 +636,23 @@ old_old_triangulation_space.prepare_coarsening_and_refinement (); old_old_triang
 }
 }
 
+// Prepares the vectors, triangulations and dof_handlers for the next time step by setting them to previous values
+
 template <int dim> void dGcGblowup<dim>::prepare_for_next_time_step ()
 {
+// If the time step length has changed, set the old time step length to the current time step length and redistribute temporal dofs
 if (dt != dt_old)
 {
 dt_old = dt; old_triangulation_time.clear (); old_triangulation_time.copy_triangulation (triangulation_time); old_dof_handler_time.distribute_dofs (old_fe_time);
 }
 
+// If the mesh changed between old_triangulation_space and old_old_triangulation_space set old_old_triangulation_space = old_triangulation_space and redistribute dofs. Either way, also reset the relevant vectors.
 if (old_mesh_change == true)
 {
 old_old_triangulation_space.clear (); old_old_triangulation_space.copy_triangulation (old_triangulation_space);
 old_old_dof_handler_space.distribute_dofs (old_old_fe_space);
 
-const unsigned int no_of_old_old_space_dofs = old_old_dof_handler_space.n_dofs ();
-
-old_old_solution_plus.reinit (no_of_old_old_space_dofs);
+old_old_solution_plus.reinit (old_old_dof_handler_space.n_dofs());
 old_old_solution_plus = old_solution_plus;
 }
 else
@@ -658,15 +660,13 @@ else
 old_old_solution_plus = old_solution_plus;
 }
 
+// If the mesh changed between triangulation_space and old_triangulation_space set old_triangulation_space = triangulation_space and redistribute dofs. Either way, also reset the relevant vectors.
 if (mesh_change == true)
 {
 old_triangulation_space.clear (); old_triangulation_space.copy_triangulation (triangulation_space);
 old_dof_handler_space.distribute_dofs (old_fe_space); old_dof_handler.distribute_dofs (old_fe);
 
-const unsigned int no_of_old_space_dofs = old_dof_handler_space.n_dofs ();
-const unsigned int no_of_old_dofs = no_of_old_space_dofs*(time_degree + 1);
-
-old_solution.reinit (no_of_old_dofs); old_solution_plus.reinit (no_of_old_space_dofs);
+old_solution.reinit (old_dof_handler_space.n_dofs()); old_solution_plus.reinit (old_dof_handler.n_dofs());
 old_solution = solution; old_solution_plus = solution_plus; 
 }
 else
@@ -674,8 +674,8 @@ else
 old_solution = solution; old_solution_plus = solution_plus; 
 }
 
-spatial_refinement_threshold *= r; spatial_coarsening_threshold *= r; temporal_refinement_threshold *= r;
-old_mesh_change = mesh_change; mesh_change = false; 
+spatial_refinement_threshold *= r; spatial_coarsening_threshold *= r; temporal_refinement_threshold *= r; // Multiply all thresholds by the scaling parameter r_m.
+old_mesh_change = mesh_change; mesh_change = false; // Reset the mesh change parameters in preparation for the next time step
 }
 
 // Output the solution
@@ -684,7 +684,7 @@ template <int dim> void dGcGblowup<dim>::output_solution () const
 {
 DataOut<dim> data_out; data_out.attach_dof_handler (dof_handler_space); data_out.add_data_vector (solution_plus, "u_h"); data_out.build_patches ();
 
-const std::string filename = "solution-" + Utilities::int_to_string (timestep_number, 5) + ".gnuplot";
+const std::string filename = "solution-" + Utilities::int_to_string (timestep_number, 7) + ".gnuplot";
 
 std::ofstream gnuplot_output (filename.c_str()); data_out.write_gnuplot (gnuplot_output);
 }
