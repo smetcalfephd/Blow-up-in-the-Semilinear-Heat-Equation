@@ -121,7 +121,7 @@ private:
 	void compute_Q_values (const unsigned int &degree, const double &point, double &Q_value, double &Q_derivative_value, double &Q_second_derivative_value) const; // Compute the "Q" values and their various derivatives from the temporal reconstruction needed for the space and time estimators
 	void compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const bool output_refinement_vector);
 	void compute_time_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time);
-	void compute_estimator ();
+	void compute_estimator (); // Solves the delta equation to determine if the estimator can be computed and, if it can be, computes it and outputs it along with other values of interest
 
 	Triangulation<dim> triangulation_space; Triangulation<dim> old_triangulation_space; Triangulation<dim> old_old_triangulation_space; // The current mesh, the mesh from the previous timestep and the mesh from the previous previous timestep
 	Triangulation<1> triangulation_time; Triangulation<1> old_triangulation_time; // The current temporal mesh and the temporal mesh from the previous timestep
@@ -1851,10 +1851,15 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double nonlinearity_value = 
     }
 }
 
+// Solves the delta equation to determine if the estimator can be computed and, if it can be, computes it and outputs it along with other values of interest
+
 template <int dim>
 void dGcGblowup<dim>::compute_estimator ()
 {
 Vector<double> reconstructed_solution_at_quadrature_point (dof_handler_space.n_dofs());
+
+// Computes the (time) integral of the Linfty norm of the temporal reconstruction of the numerical solution
+// If the mesh has changed, we have to be careful as we cannot compute this reconstruction explicitly on the current grid 
 
 if (mesh_change == false)
 {
@@ -1890,6 +1895,8 @@ DoFTools::make_hanging_node_constraints (dof_handler_space, spatial_constraints)
 DoFTools::make_zero_boundary_constraints (dof_handler_space, spatial_constraints);
 spatial_constraints.close ();
 
+// This time integral need not be too accurate, iterpolation (over computing on the union grid) should be sufficient here
+
 VectorTools::interpolate_to_different_mesh (old_dof_handler_space, old_solution_plus, dof_handler_space, spatial_constraints, old_solution_plus_interpolated);
 
 switch(time_degree)
@@ -1914,6 +1921,8 @@ solution_time_integral += reconstructed_solution_at_quadrature_point.linfty_norm
 }
 }
 
+// Try to solve the delta equation via Newton iteration
+
 estimator = estimator + etaS + etaT;
 delta = delta + 0.05;
 
@@ -1937,7 +1946,7 @@ else
 {
 deallog << std::endl << "max||U(t)||: " << solution.linfty_norm() << std::endl; // Output a (crude) approximation to the LinftyLinfty norm of the numerical solution
 deallog << "Estimator: " << estimator << std::endl; // Output the value of the estimator
-deallog << "Space Estimator: " << etaS << std::endl; // Output the value of the time estimator
+deallog << "Space Estimator: " << etaS << std::endl; // Output the value of the space estimator
 deallog << "Time Estimator: " << etaT << std::endl; // Output the value of the time estimator
 deallog << "r: " << r << std::endl << std::endl; // Output the value of the scaling parameter r_m
 }
