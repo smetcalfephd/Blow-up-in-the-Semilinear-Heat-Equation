@@ -104,15 +104,15 @@ public:
 
 private:
 
-    void setup_system_full ();
-	void setup_system_partial ();
-	void create_system_matrix ();
-    void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &temporal_mass_matrix) const;
-	void create_time_derivative_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &time_derivative_matrix) const;
-    void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const;
-	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol);
-    void refine_initial_mesh (); 
-    void refine_mesh ();
+    void setup_system_full (); // Initialises all vectors, distributes all degrees of freedom and computes the system matrix
+	void setup_system_partial (); // Reinitialises vectors and redistributes degrees of freedom related to the current triangulation. Also recomputes the system matrix. Required if the mesh or time step length changes
+	void create_system_matrix (); // Creates the system matrix
+    void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &temporal_mass_matrix) const; // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
+	void create_time_derivative_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &time_derivative_matrix) const; // Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
+    void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const; // Computes the "energy projection" of the initial condition u_0 to the finite element function U_0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
+	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol); // Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solutions is below rel_tol*max(U)
+    void refine_initial_mesh (); // Refines the initial mesh and recomputes the energy projection of the initial condition until ||u_0 - U_0|| < spatial_coarsening_threshold
+    void refine_mesh (); // Refines all cells with refinement_vector(cell_no) > spatial_refinement_threshold and coarsens all cells with refinement_vector(cell_no) < spatial_coarsening_threshold
     void prepare_for_next_time_step ();
 	void output_solution () const; // Output the solution
 	void get_spacetime_function_values (const Vector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices, Vector<double> &spacetime_fe_function_values) const;
@@ -160,6 +160,8 @@ template <int dim> dGcGblowup<dim>::dGcGblowup ()
 				fe (fe_space, time_degree + 1), old_fe (old_fe_space, time_degree + 1)
 {}
 
+// Initialises all vectors, distributes all degrees of freedom and computes the system matrix
+
 template <int dim> void dGcGblowup<dim>::setup_system_full ()
 {
 dof_handler_space.distribute_dofs (fe_space); old_dof_handler_space.distribute_dofs (old_fe_space); old_old_dof_handler_space.distribute_dofs (old_old_fe_space);
@@ -204,6 +206,8 @@ refinement_vector.reinit (no_of_cells);
 create_system_matrix ();
 }
 
+// Reinitialises vectors and redistributes degrees of freedom related to the current triangulation. Also recomputes the system matrix. Required if the mesh or time step length changes
+
 template <int dim> void dGcGblowup<dim>::setup_system_partial ()
 {
 if (etaT > temporal_refinement_threshold)
@@ -244,6 +248,8 @@ refinement_vector.reinit (no_of_cells);
 system_matrix.reinit (sparsity_pattern);
 create_system_matrix ();
 }
+
+// Creates the system matrix
 
 template <int dim> void dGcGblowup<dim>::create_system_matrix ()
 {
@@ -318,6 +324,8 @@ double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0;
     }
 }
 
+// Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
+
 template <int dim> void dGcGblowup<dim>::create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &temporal_mass_matrix) const
 {
 const QGauss<1> quadrature_formula_time (time_degree + 1);
@@ -339,6 +347,8 @@ typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_
         }
 }
 
+// Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
+
 template <int dim> void dGcGblowup<dim>::create_time_derivative_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &time_derivative_matrix) const
 {
 const QGauss<1> quadrature_formula_time (time_degree + 1);
@@ -355,6 +365,8 @@ typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_
 	        time_derivative_matrix(r,s) += fe_values_time.shape_value(r,q_time)*fe_values_time.shape_grad(s,q_time)[0]*fe_values_time.JxW(q_time);
             }
 }
+
+// Computes the "energy projection" of the initial condition u_0 to the finite element function U_0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
 
 template <int dim> void dGcGblowup<dim>::energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const
 {
@@ -437,6 +449,8 @@ solver.solve (laplace_matrix, projection, right_hand_side, ilu);
 spatial_constraints.distribute (projection);
 }
 
+// Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solutions is below rel_tol*max(U)
+
 template <int dim> void dGcGblowup<dim>::assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol)
 {
 deallog << "Calculating the numerical solution via Picard iteration..." << std::endl;
@@ -457,7 +471,7 @@ std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
 Functions::FEFieldFunction<dim> old_solution_plus_function (old_dof_handler_space, old_solution_plus);
 
-if (mesh_change == false)
+if (mesh_change == false) // Extend the numerical solution at final time on the previous interval to a constant-in-time function for use as an initial guess in the Picard iteration
 {
 switch (time_degree)
 {
@@ -465,7 +479,7 @@ case 0: solution = old_solution_plus; break;
 default: extend_to_constant_in_time_function (old_solution_plus, solution);
 }
 }
-else
+else // If the mesh has changed, we do as above but must first interpolate to the current finite element space
 {
 VectorTools::interpolate_to_different_mesh (old_dof_handler_space, old_solution_plus, dof_handler_space, solution_plus);
 
@@ -488,6 +502,8 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
     residual_vector = solution;
 
     right_hand_side = 0;
+
+    // Assemble the right-hand side vector
 
         for (; cell != final_cell; ++cell, ++space_cell)
         {
@@ -521,7 +537,9 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
             }
 
         constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, right_hand_side);
-        }
+        } 
+
+    // Solve the matrix-vector system
 
     SolverBicgstab<>::AdditionalData data; data.exact_residual = false;
 
@@ -533,10 +551,11 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
     constraints.distribute (solution);
 
+    // Compute the residual
     residual_vector.add (-1,solution);
     residual = residual_vector.l2_norm ();
 
-    if (residual < max*rel_tol) {break;}
+    if (residual < max*rel_tol) {break;} // Terminate the Picard iteration when the residual is sufficiently small
     }
 
 switch(time_degree) {case 0: solution_plus = solution; break; default: reorder_solution_vector (solution, reordered_solution, dof_handler_space, dof_handler, fe); solution_plus = reordered_solution.block(time_degree);}
@@ -544,7 +563,7 @@ switch(time_degree) {case 0: solution_plus = solution; break; default: reorder_s
 if (iteration_number == max_iterations) {deallog << "...converged in the maximum number of allowed iterations (" << max_iterations << ") with a residual of " << residual << std::endl;} else {deallog << "...converged in " << iteration_number << " iterations with a residual of " << residual << std::endl;}
 }
 
-// Refine the mesh
+// Refines the initial mesh and recomputes the energy projection of the initial condition until ||u_0 - U_0|| < spatial_coarsening_threshold
 
 template <int dim> void dGcGblowup<dim>::refine_initial_mesh ()
 {
@@ -569,7 +588,7 @@ triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.ex
 }	
 }
 
-// Refine the mesh
+// Refines all cells with refinement_vector(cell_no) > spatial_refinement_threshold and coarsens all cells with refinement_vector(cell_no) < spatial_coarsening_threshold
 
 template <int dim> void dGcGblowup<dim>::refine_mesh ()
 {
@@ -577,6 +596,9 @@ GridRefinement::refine (triangulation_space, refinement_vector, spatial_refineme
 GridRefinement::coarsen (triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
 triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
+
+// Just because we TRY to refine the mesh DOES NOT MEAN IT CHANGES (EVEN IF SOME CELLS ARE FLAGGED)! The routine below checks whether or not the mesh has REALLY been modified
+// If the mesh has been modified, we change mesh_change to true
 
 if (triangulation_space.n_active_cells() != old_triangulation_space.n_active_cells()) 
 {
@@ -597,6 +619,8 @@ typename Triangulation<dim>::active_cell_iterator old_space_cell = old_triangula
     if (mesh_change == true) {break;}
     }
 }
+
+// For the first time step only, we also refine the other two meshes in order to keep all three meshes the same
 
 if (timestep_number == 0)
 {
