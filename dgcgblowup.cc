@@ -114,11 +114,11 @@ private:
     void refine_initial_mesh (); // Refines the initial mesh and recomputes the energy projection of the initial condition until ||u_0 - U_0|| < spatial_coarsening_threshold
     void refine_mesh (); // Refines all cells with refinement_vector(cell_no) > spatial_refinement_threshold and coarsens all cells with refinement_vector(cell_no) < spatial_coarsening_threshold
     void prepare_for_next_time_step (); // Prepares the vectors, triangulations and dof_handlers for the next time step by setting them to previous values
-	void output_solution () const; // Outputs the solution at 
-	void get_spacetime_function_values (const Vector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices, Vector<double> &spacetime_fe_function_values) const;
-	void reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, const DoFHandler<dim> &dof_handler_space, const DoFHandler<dim> &dof_handler, const FESystem<dim> &fe) const;
-	void extend_to_constant_in_time_function (Vector<double> &fe_function, Vector<double> &spacetime_fe_function) const;
-	void compute_Q_values (const unsigned int &degree, const double &point, double &Q_value, double &Q_derivative_value, double &Q_second_derivative_value) const;
+	void output_solution () const; // Outputs the solution at final time on the current time step
+	void get_spacetime_function_values (const Vector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices, Vector<double> &spacetime_fe_function_values) const; // Helper function to evaluate the spacetime FEM function at the spatial and temporal quadrature points
+	void reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, const DoFHandler<dim> &dof_handler_space, const DoFHandler<dim> &dof_handler, const FESystem<dim> &fe) const; // Helper function which reorders the spacetime FEM vector into a blockvector with each block representing a temporal node
+	void extend_to_constant_in_time_function (Vector<double> &fe_function, Vector<double> &spacetime_fe_function) const; // Helper function which takes a spatial FEM function and expands it to a constant-in-time spacetime FEM function
+	void compute_Q_values (const unsigned int &degree, const double &point, double &Q_value, double &Q_derivative_value, double &Q_second_derivative_value) const; // Compute the "Q" values and their various derivatives from the temporal reconstruction needed for the space and time estimators
 	void compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const bool output_refinement_vector);
 	void compute_time_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time);
 	void compute_estimator ();
@@ -678,7 +678,7 @@ spatial_refinement_threshold *= r; spatial_coarsening_threshold *= r; temporal_r
 old_mesh_change = mesh_change; mesh_change = false; // Reset the mesh change parameters in preparation for the next time step
 }
 
-// Output the solution
+// Outputs the solution at final time on the current time step
 
 template <int dim> void dGcGblowup<dim>::output_solution () const
 {
@@ -688,6 +688,8 @@ const std::string filename = "solution-" + Utilities::int_to_string (timestep_nu
 
 std::ofstream gnuplot_output (filename.c_str()); data_out.write_gnuplot (gnuplot_output);
 }
+
+// Helper function to evaluate the spacetime FEM function at the spatial and temporal quadrature points
 
 template<int dim> void dGcGblowup<dim>::get_spacetime_function_values (const Vector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices, Vector<double> &spacetime_fe_function_values) const
 {
@@ -709,6 +711,8 @@ spacetime_fe_function_values = 0;
             }
     }
 }
+
+// Helper function which reorders the spacetime FEM vector into a blockvector with each block representing a temporal node
 
 template <int dim> void dGcGblowup<dim>::reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, const DoFHandler<dim> &dof_handler_space, const DoFHandler<dim> &dof_handler, const FESystem<dim> &fe) const
 {
@@ -734,6 +738,8 @@ typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (
     }
 }
 
+// Helper function which takes a spatial FEM function and expands it to a constant-in-time spacetime FEM function
+
 template <int dim> void dGcGblowup<dim>::extend_to_constant_in_time_function (Vector<double> &fe_function, Vector<double> &spacetime_fe_function) const
 {
 const unsigned int dofs_per_cell = fe.dofs_per_cell;
@@ -757,6 +763,8 @@ typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (
         }
     }
 }
+
+// Compute the "Q" values and their various derivatives from the temporal reconstruction needed for the space and time estimators
 
 template <int dim> void dGcGblowup<dim>::compute_Q_values (const unsigned int &degree, const double &point, double &Q_value, double &Q_derivative_value, double &Q_second_derivative_value) const
 {
