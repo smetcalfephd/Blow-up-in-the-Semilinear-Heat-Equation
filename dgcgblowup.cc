@@ -123,8 +123,8 @@ private:
 	void compute_time_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time);
 	void compute_estimator ();
 
-	Triangulation<dim> triangulation_space; Triangulation<dim> old_triangulation_space; Triangulation<dim> old_old_triangulation_space; 
-	Triangulation<1> triangulation_time; Triangulation<1> old_triangulation_time;
+	Triangulation<dim> triangulation_space; Triangulation<dim> old_triangulation_space; Triangulation<dim> old_old_triangulation_space; // The current mesh, the mesh from the previous timestep and the mesh from the previous previous timestep
+	Triangulation<1> triangulation_time; Triangulation<1> old_triangulation_time; // The current temporal mesh and the temporal mesh from the previous timestep
 
 	DoFHandler<dim> dof_handler_space; DoFHandler<dim> old_dof_handler_space; DoFHandler<dim> old_old_dof_handler_space; 
 	DoFHandler<1> dof_handler_time; DoFHandler<1> old_dof_handler_time; 
@@ -139,15 +139,15 @@ private:
 
 	SparseMatrix<double> system_matrix;
 
-	BlockVector<double> reordered_solution;
+	BlockVector<double> reordered_solution; // Reordered solution vector with each block representing a temporal node
 
 	Vector<double> right_hand_side;
-	Vector<double> solution;
-	Vector<double> old_solution;
-	Vector<double> solution_plus;
-	Vector<double> old_solution_plus;
-	Vector<double> old_old_solution_plus;
-    Vector<double> refinement_vector;
+	Vector<double> solution; // The solution on the current timestep
+	Vector<double> old_solution; // The solution on the previous timestep
+	Vector<double> solution_plus; // The solution evaluated at final time on the current timestep
+	Vector<double> old_solution_plus; // The solution evaluated at final time on the previous timestep
+	Vector<double> old_old_solution_plus; // The solution evaluated at final time on the previous previous timestep
+    Vector<double> refinement_vector; // Vector used to refine the mesh
 };
 
 template <int dim> dGcGblowup<dim>::dGcGblowup ()
