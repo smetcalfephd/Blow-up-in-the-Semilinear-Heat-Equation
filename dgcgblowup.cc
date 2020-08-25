@@ -77,7 +77,7 @@ public:
 
     // Discretisation parameters
     const unsigned int space_degree = 3; // Spatial polynomial degree
-	const unsigned int time_degree = 1; // Temporal polynomial degree
+	const unsigned int time_degree = 2; // Temporal polynomial degree
     unsigned int timestep_number = 0; // The current timestep
     double time = 0; // The current time
     double dt = 0.1*0.215; // The current timestep length
@@ -109,6 +109,7 @@ private:
 	void create_system_matrix (); // Creates the system matrix
     void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &temporal_mass_matrix) const; // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
 	void create_time_derivative_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &time_derivative_matrix) const; // Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
+    void QR_decomposition (const FullMatrix<double> &matrix, FullMatrix<double> &Q, FullMatrix<double> &R) const;
     void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const; // Computes the "energy projection" of the initial condition u_0 to the finite element function U_0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
 	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol); // Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solutions is below rel_tol*max(U)
     void refine_initial_mesh (); // Refines the initial mesh and recomputes the energy projection of the initial condition until ||u_0 - U_0|| < spatial_coarsening_threshold
@@ -119,7 +120,7 @@ private:
 	void reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, const DoFHandler<dim> &dof_handler_space, const DoFHandler<dim> &dof_handler, const FESystem<dim> &fe) const; // Helper function which reorders the spacetime FEM vector into a blockvector with each block representing a temporal node
 	void extend_to_constant_in_time_function (Vector<double> &fe_function, Vector<double> &spacetime_fe_function) const; // Helper function which takes a spatial FEM function and expands it to a constant-in-time spacetime FEM function
 	void compute_Q_values (const unsigned int &degree, const double &point, double &Q_value, double &Q_derivative_value, double &Q_second_derivative_value) const; // Compute the "Q" values and their various derivatives from the temporal reconstruction needed for the space and time estimators
-	void compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const bool output_refinement_vector);
+	void compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const bool &output_refinement_vector);
 	void compute_time_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time);
 	void compute_estimator (); // Solves the delta equation to determine if the estimator can be computed and, if it can be, computes it and outputs it along with other values of interest
 
@@ -322,6 +323,84 @@ double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0;
     constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix);
     previous_cell_size = cell_size; 
     }
+
+
+Vector<double> eigenvalues (time_degree + 1);
+
+switch (time_degree)
+{
+case 0: eigenvalues(0) = 4; break;
+default: 
+const QGaussLobatto<1> quadrature_formula_time (time_degree + 2);
+FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_quadrature_points | update_JxW_values);
+
+FullMatrix<double> temporal_laplace_matrix (time_degree + 1, time_degree + 1);
+FullMatrix<double> temporal_laplace_Q_matrix (time_degree + 1, time_degree + 1);
+FullMatrix<double> temporal_laplace_R_matrix (time_degree + 1, time_degree + 1);
+FullMatrix<double> temporal_mass_Q_matrix (time_degree + 1, time_degree + 1);
+FullMatrix<double> temporal_mass_R_matrix (time_degree + 1, time_degree + 1);
+
+Vector<double> Q_values (time_degree + 2);
+Vector<double> Q_derivative_values (time_degree + 2);
+Vector<double> Q_second_derivative_values (time_degree + 2);
+    
+typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active ();
+fe_values_time.reinit (time_cell);
+
+    for (unsigned int q_time = 0; q_time < time_degree + 2; ++q_time)
+    {
+    compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values(q_time), Q_derivative_values(q_time), Q_second_derivative_values(q_time));
+    }
+
+    for (unsigned int r = 0; r < time_degree + 1; ++r)
+        for (unsigned int s = 0; s < r + 1; ++s)
+        {
+            for (unsigned int q_time = 0; q_time < time_degree + 2; ++q_time)
+            {
+            temporal_laplace_matrix(r,s) += (fe_values_time.shape_grad(r,q_time)[0] + 0.5*Q_derivative_values(q_time)*fe_values_time.shape_value(r,0))*(fe_values_time.shape_grad(s,q_time)[0] + 0.5*Q_derivative_values(q_time)*fe_values_time.shape_value(s,0))*fe_values_time.JxW(q_time);
+            }
+        
+        temporal_laplace_matrix(s,r) = temporal_laplace_matrix(r,s);
+        }
+
+temporal_laplace_matrix(0,0) = 5; temporal_laplace_matrix(0,1) = -1; temporal_laplace_matrix(0,2) = 7;
+temporal_laplace_matrix(1,0) = 24; temporal_laplace_matrix(1,1) = -9; temporal_laplace_matrix(1,2) = 2;
+temporal_laplace_matrix(2,0) = 3; temporal_laplace_matrix(2,1) = 5; temporal_laplace_matrix(2,2) = 12;
+
+QR_decomposition (temporal_laplace_matrix, temporal_laplace_Q_matrix, temporal_laplace_R_matrix);
+
+    deallog << "temporal_laplace_matrix[0][0] " << temporal_laplace_matrix(0,0) << std::endl;
+    deallog << "temporal_laplace_matrix[0][1] " << temporal_laplace_matrix(0,1) << std::endl;
+    deallog << "temporal_laplace_matrix[0][2] " << temporal_laplace_matrix(0,2) << std::endl;
+    deallog << "temporal_laplace_matrix[1][0] " << temporal_laplace_matrix(1,0) << std::endl;
+    deallog << "temporal_laplace_matrix[1][1] " << temporal_laplace_matrix(1,1) << std::endl;
+    deallog << "temporal_laplace_matrix[1][2] " << temporal_laplace_matrix(1,2) << std::endl;
+    deallog << "temporal_laplace_matrix[2][0] " << temporal_laplace_matrix(2,0) << std::endl;
+    deallog << "temporal_laplace_matrix[2][1] " << temporal_laplace_matrix(2,1) << std::endl;
+    deallog << "temporal_laplace_matrix[2][2] " << temporal_laplace_matrix(2,2) << std::endl;
+
+    deallog << "temporal_laplace_Q_matrix[0][0] " << temporal_laplace_Q_matrix(0,0) << std::endl;
+    deallog << "temporal_laplace_Q_matrix[0][1] " << temporal_laplace_Q_matrix(0,1) << std::endl;
+    deallog << "temporal_laplace_Q_matrix[0][2] " << temporal_laplace_Q_matrix(0,2) << std::endl;
+    deallog << "temporal_laplace_Q_matrix[1][0] " << temporal_laplace_Q_matrix(1,0) << std::endl;
+    deallog << "temporal_laplace_Q_matrix[1][1] " << temporal_laplace_Q_matrix(1,1) << std::endl;
+    deallog << "temporal_laplace_Q_matrix[1][2] " << temporal_laplace_Q_matrix(1,2) << std::endl;
+    deallog << "temporal_laplace_Q_matrix[2][0] " << temporal_laplace_Q_matrix(2,0) << std::endl;
+    deallog << "temporal_laplace_Q_matrix[2][1] " << temporal_laplace_Q_matrix(2,1) << std::endl;
+    deallog << "temporal_laplace_Q_matrix[2][2] " << temporal_laplace_Q_matrix(2,2) << std::endl;
+
+    deallog << "temporal_laplace_R_matrix[0][0] " << temporal_laplace_R_matrix(0,0) << std::endl;
+    deallog << "temporal_laplace_R_matrix[0][1] " << temporal_laplace_R_matrix(0,1) << std::endl;
+    deallog << "temporal_laplace_R_matrix[0][2] " << temporal_laplace_R_matrix(0,2) << std::endl;
+    deallog << "temporal_laplace_R_matrix[1][0] " << temporal_laplace_R_matrix(1,0) << std::endl;
+    deallog << "temporal_laplace_R_matrix[1][1] " << temporal_laplace_R_matrix(1,1) << std::endl;
+    deallog << "temporal_laplace_R_matrix[1][2] " << temporal_laplace_R_matrix(1,2) << std::endl;
+    deallog << "temporal_laplace_R_matrix[2][0] " << temporal_laplace_R_matrix(2,0) << std::endl;
+    deallog << "temporal_laplace_R_matrix[2][1] " << temporal_laplace_R_matrix(2,1) << std::endl;
+    deallog << "temporal_laplace_R_matrix[2][2] " << temporal_laplace_R_matrix(2,2) << std::endl;
+
+
+}
 }
 
 // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
@@ -363,6 +442,62 @@ typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
             {
 	        time_derivative_matrix(r,s) += fe_values_time.shape_value(r,q_time)*fe_values_time.shape_grad(s,q_time)[0]*fe_values_time.JxW(q_time);
+            }
+}
+
+template <int dim> void dGcGblowup<dim>::QR_decomposition (const FullMatrix<double> &matrix, FullMatrix<double> &Q, FullMatrix<double> &R) const
+{
+const unsigned int n = matrix.m ();
+double inner_product = 0; double norm = 0;
+
+    for (unsigned int r = 0; r < n; ++r)
+    {      
+        for (unsigned int s = 0; s < n; ++s)
+        {
+        R(s,r) = matrix(s,r);
+        }
+
+        for (unsigned int s = 0; s < r; ++s)
+        {
+        norm = 0; inner_product = 0;
+
+            for (unsigned int t = 0; t < n; ++t)
+            {
+            norm += R(t,s)*R(t,s);
+            inner_product += matrix(t,r)*R(t,s);
+            }
+
+            for (unsigned int t = 0; t < n; ++t)
+            {
+            R(t,r) -= (inner_product/norm)*R(t,s);
+            }
+        }
+    }
+
+    for (unsigned int r = 0; r < n; ++r)
+    {
+    norm = 0;
+
+        for (unsigned int s = 0; s < n; ++s)
+        {
+        norm += R(s,r)*R(s,r);
+        }
+
+    norm = sqrt(norm);
+
+        for (unsigned int s = 0; s < n; ++s)
+        {
+        Q(s,r) = R(s,r)/norm;
+        }
+    }
+
+R = 0;
+
+    for (unsigned int r = 0; r < n; ++r)
+        for (unsigned int s = r; s < n; ++s)
+            for (unsigned int k = 0; k < n; ++k)
+            {
+            R(r,s) += Q(k,r)*matrix(k,s);
             }
 }
 
@@ -785,7 +920,7 @@ default: double value = 0; double old_value = point; double old_old_value = 1.0;
 Q_value *= 0.5*std::pow(-1, degree); Q_derivative_value *= std::pow(-1, degree); Q_second_derivative_value *= 2*std::pow(-1, degree);
 }
 
-template <int dim> void dGcGblowup<dim>::compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const bool output_refinement_vector)
+template <int dim> void dGcGblowup<dim>::compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const bool &output_refinement_vector)
 {
 const QGaussLobatto<dim> quadrature_formula_space (no_q_space_x); const QGaussLobatto<dim-1> quadrature_formula_space_face (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
 
