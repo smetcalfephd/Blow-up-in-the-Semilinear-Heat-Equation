@@ -110,8 +110,8 @@ private:
     void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &temporal_mass_matrix) const; // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
 	void create_time_derivative_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &time_derivative_matrix) const; // Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
     void create_preconditioner ();
-    void compute_temporal_eigenvalues (Vector<double> &eigenvalues, const double &tol) const;
-    void QR_decomposition (const FullMatrix<double> &matrix, FullMatrix<double> &Q, FullMatrix<double> &R) const;
+    void compute_temporal_eigenvalues (Vector<double> &eigenvalues, const double &tol) const; // Computes temporal eigenvalues used to build the preconditioner
+    void QR_decomposition (const FullMatrix<double> &matrix, FullMatrix<double> &Q, FullMatrix<double> &R) const; // Computes the QR decomposition of a given input matrix via Gram-Schmidt
     void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const; // Computes the "energy projection" of the initial condition u_0 to the finite element function U_0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
 	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol); // Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solutions is below rel_tol*max(U)
     void refine_initial_mesh (); // Refines the initial mesh and recomputes the energy projection of the initial condition until ||u_0 - U_0|| < spatial_coarsening_threshold
@@ -150,7 +150,7 @@ private:
 	Vector<double> solution_plus; // The solution evaluated at final time on the current timestep
 	Vector<double> old_solution_plus; // The solution evaluated at final time on the previous timestep
 	Vector<double> old_old_solution_plus; // The solution evaluated at final time on the previous previous timestep
-    Vector<double> eigenvalues;
+    Vector<double> eigenvalues; //  The temporal eigenvalues used to build the preconditioner
     Vector<double> refinement_vector; // Vector used to refine the mesh
 };
 
@@ -374,32 +374,34 @@ template <int dim> void dGcGblowup<dim>::create_preconditioner ()
 {
 }
 
+// Computes temporal eigenvalues used to build the preconditioner
+
 template <int dim> void dGcGblowup<dim>::compute_temporal_eigenvalues (Vector<double> &eigenvalues, const double &tol) const
 {
-Triangulation<1> triangulation_time_unit; GridGenerator::hyper_cube (triangulation_time_unit, -1, 1);
-DoFHandler<1> dof_handler_time_unit (triangulation_time_unit); FE_DGQ<1> fe_time_unit (time_degree); dof_handler_time_unit.distribute_dofs (fe_time_unit);
+Triangulation<1> triangulation_unit_time; GridGenerator::hyper_cube (triangulation_unit_time, -1, 1);
+DoFHandler<1> dof_handler_unit_time (triangulation_unit_time); FE_DGQ<1> fe_unit_time (time_degree); dof_handler_unit_time.distribute_dofs (fe_unit_time);
 
 const QGaussLobatto<1> quadrature_formula_time (time_degree + 2);
-FEValues<1> fe_values_time_unit (fe_time_unit, quadrature_formula_time, update_values | update_gradients | update_quadrature_points | update_JxW_values);
+FEValues<1> fe_values_unit_time (fe_unit_time, quadrature_formula_time, update_values | update_gradients | update_quadrature_points | update_JxW_values);
 
 FullMatrix<double> matrix (time_degree + 1, time_degree + 1);
-FullMatrix<double> temporal_mass_matrix (time_degree + 1, time_degree + 1);
-FullMatrix<double> temporal_laplace_matrix (time_degree + 1, time_degree + 1);
 FullMatrix<double> Q_matrix (time_degree + 1, time_degree + 1);
 FullMatrix<double> R_matrix (time_degree + 1, time_degree + 1);
+FullMatrix<double> temporal_laplace_matrix (time_degree + 1, time_degree + 1);
+FullMatrix<double> temporal_mass_matrix (time_degree + 1, time_degree + 1);
 
 Vector<double> Q_values (time_degree + 2);
 Vector<double> Q_derivative_values (time_degree + 2);
 
-create_temporal_mass_matrix (fe_time_unit, dof_handler_time_unit, temporal_mass_matrix);
+create_temporal_mass_matrix (fe_unit_time, dof_handler_unit_time, temporal_mass_matrix);
 
-typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time_unit.begin_active (); fe_values_time_unit.reinit (time_cell);
+typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_unit_time.begin_active (); fe_values_unit_time.reinit (time_cell);
 
 double Q_value = 0; double Q_second_derivative_value = 0;
 
     for (unsigned int q_time = 0; q_time < time_degree + 2; ++q_time)
     {
-    compute_Q_values (time_degree, fe_values_time_unit.quadrature_point(q_time)(0), Q_value, Q_derivative_values(q_time), Q_second_derivative_value);
+    compute_Q_values (time_degree, fe_values_unit_time.quadrature_point(q_time)(0), Q_value, Q_derivative_values(q_time), Q_second_derivative_value);
     }
 
     for (unsigned int r = 0; r < time_degree + 1; ++r)
@@ -407,7 +409,7 @@ double Q_value = 0; double Q_second_derivative_value = 0;
         {
             for (unsigned int q_time = 0; q_time < time_degree + 2; ++q_time)
             {
-            temporal_laplace_matrix(r,s) += (fe_values_time_unit.shape_grad(r,q_time)[0] + 0.5*Q_derivative_values(q_time)*fe_values_time_unit.shape_value(r,0))*(fe_values_time_unit.shape_grad(s,q_time)[0] + 0.5*Q_derivative_values(q_time)*fe_values_time_unit.shape_value(s,0))*fe_values_time_unit.JxW(q_time);
+            temporal_laplace_matrix(r,s) += (fe_values_unit_time.shape_grad(r,q_time)[0] + 0.5*Q_derivative_values(q_time)*fe_values_unit_time.shape_value(r,0))*(fe_values_unit_time.shape_grad(s,q_time)[0] + 0.5*Q_derivative_values(q_time)*fe_values_unit_time.shape_value(s,0))*fe_values_unit_time.JxW(q_time);
             }
 
         temporal_laplace_matrix(s,r) = temporal_laplace_matrix(r,s);
@@ -437,6 +439,8 @@ double residual = 100;
     residual = residual_vector.l2_norm();
     }
 }
+
+// Computes the QR decomposition of a given input matrix via Gram-Schmidt
 
 template <int dim> void dGcGblowup<dim>::QR_decomposition (const FullMatrix<double> &matrix, FullMatrix<double> &Q, FullMatrix<double> &R) const
 {
