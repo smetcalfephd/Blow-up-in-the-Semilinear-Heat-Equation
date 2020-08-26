@@ -107,8 +107,10 @@ private:
     void setup_system_full (); // Initialises all vectors, distributes all degrees of freedom and computes the system matrix
 	void setup_system_partial (); // Reinitialises vectors and redistributes degrees of freedom related to the current triangulation. Also recomputes the system matrix. Required if the mesh or time step length changes
 	void create_system_matrix (); // Creates the system matrix
-    void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &temporal_mass_matrix) const; // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
-	void create_time_derivative_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &time_derivative_matrix) const; // Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
+    void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &temporal_mass_matrix) const; // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
+	void create_time_derivative_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &time_derivative_matrix) const; // Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
+    void create_preconditioner ();
+    void compute_temporal_eigenvalues (Vector<double> &eigenvalues, const double &tol) const;
     void QR_decomposition (const FullMatrix<double> &matrix, FullMatrix<double> &Q, FullMatrix<double> &R) const;
     void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const; // Computes the "energy projection" of the initial condition u_0 to the finite element function U_0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
 	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol); // Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solutions is below rel_tol*max(U)
@@ -148,6 +150,7 @@ private:
 	Vector<double> solution_plus; // The solution evaluated at final time on the current timestep
 	Vector<double> old_solution_plus; // The solution evaluated at final time on the previous timestep
 	Vector<double> old_old_solution_plus; // The solution evaluated at final time on the previous previous timestep
+    Vector<double> eigenvalues;
     Vector<double> refinement_vector; // Vector used to refine the mesh
 };
 
@@ -268,8 +271,8 @@ FullMatrix<double> temporal_mass_matrix (time_degree + 1, time_degree + 1);
 FullMatrix<double> time_derivative_matrix (time_degree + 1, time_degree + 1);
 std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
-create_temporal_mass_matrix (fe_time, temporal_mass_matrix);
-if (time_degree > 0) {create_time_derivative_matrix (fe_time, time_derivative_matrix);}
+create_temporal_mass_matrix (fe_time, dof_handler_time, temporal_mass_matrix);
+if (time_degree > 0) {create_time_derivative_matrix (fe_time, dof_handler_time, time_derivative_matrix);}
 
 typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active (), final_space_cell = dof_handler_space.end ();
 typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active ();
@@ -327,7 +330,7 @@ double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0;
 
 // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
 
-template <int dim> void dGcGblowup<dim>::create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &temporal_mass_matrix) const
+template <int dim> void dGcGblowup<dim>::create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &temporal_mass_matrix) const
 {
 const QGauss<1> quadrature_formula_time (time_degree + 1);
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_JxW_values);
@@ -350,7 +353,7 @@ typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_
 
 // Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
 
-template <int dim> void dGcGblowup<dim>::create_time_derivative_matrix (const FE_DGQ<1> &fe_time, FullMatrix<double> &time_derivative_matrix) const
+template <int dim> void dGcGblowup<dim>::create_time_derivative_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &time_derivative_matrix) const
 {
 const QGauss<1> quadrature_formula_time (time_degree + 1);
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
@@ -365,6 +368,74 @@ typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_
             {
 	        time_derivative_matrix(r,s) += fe_values_time.shape_value(r,q_time)*fe_values_time.shape_grad(s,q_time)[0]*fe_values_time.JxW(q_time);
             }
+}
+
+template <int dim> void dGcGblowup<dim>::create_preconditioner ()
+{
+}
+
+template <int dim> void dGcGblowup<dim>::compute_temporal_eigenvalues (Vector<double> &eigenvalues, const double &tol) const
+{
+Triangulation<1> triangulation_time_unit; GridGenerator::hyper_cube (triangulation_time_unit, -1, 1);
+DoFHandler<1> dof_handler_time_unit (triangulation_time_unit); FE_DGQ<1> fe_time_unit (time_degree); dof_handler_time_unit.distribute_dofs (fe_time_unit);
+
+const QGaussLobatto<1> quadrature_formula_time (time_degree + 2);
+FEValues<1> fe_values_time_unit (fe_time_unit, quadrature_formula_time, update_values | update_gradients | update_quadrature_points | update_JxW_values);
+
+FullMatrix<double> matrix (time_degree + 1, time_degree + 1);
+FullMatrix<double> temporal_mass_matrix (time_degree + 1, time_degree + 1);
+FullMatrix<double> temporal_laplace_matrix (time_degree + 1, time_degree + 1);
+FullMatrix<double> Q_matrix (time_degree + 1, time_degree + 1);
+FullMatrix<double> R_matrix (time_degree + 1, time_degree + 1);
+
+Vector<double> Q_values (time_degree + 2);
+Vector<double> Q_derivative_values (time_degree + 2);
+
+create_temporal_mass_matrix (fe_time_unit, dof_handler_time_unit, temporal_mass_matrix);
+
+typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time_unit.begin_active (); fe_values_time_unit.reinit (time_cell);
+
+double Q_value = 0; double Q_second_derivative_value = 0;
+
+    for (unsigned int q_time = 0; q_time < time_degree + 2; ++q_time)
+    {
+    compute_Q_values (time_degree, fe_values_time_unit.quadrature_point(q_time)(0), Q_value, Q_derivative_values(q_time), Q_second_derivative_value);
+    }
+
+    for (unsigned int r = 0; r < time_degree + 1; ++r)
+        for (unsigned int s = 0; s < r + 1; ++s)
+        {
+            for (unsigned int q_time = 0; q_time < time_degree + 2; ++q_time)
+            {
+            temporal_laplace_matrix(r,s) += (fe_values_time_unit.shape_grad(r,q_time)[0] + 0.5*Q_derivative_values(q_time)*fe_values_time_unit.shape_value(r,0))*(fe_values_time_unit.shape_grad(s,q_time)[0] + 0.5*Q_derivative_values(q_time)*fe_values_time_unit.shape_value(s,0))*fe_values_time_unit.JxW(q_time);
+            }
+
+        temporal_laplace_matrix(s,r) = temporal_laplace_matrix(r,s);
+        }
+
+temporal_laplace_matrix.gauss_jordan ();
+temporal_laplace_matrix.mmult (matrix, temporal_mass_matrix);
+
+eigenvalues.reinit (time_degree + 1);
+Vector<double> old_eigenvalues (time_degree + 1); 
+Vector<double> residual_vector (time_degree + 1);
+
+double residual = 100;
+
+    while (residual > tol)
+    {    
+    QR_decomposition (matrix, Q_matrix, R_matrix);
+    R_matrix.mmult (matrix, Q_matrix);
+
+        for (unsigned int i = 0; i < time_degree + 1; ++i)
+        {
+        eigenvalues(i) = matrix(i,i);
+        residual_vector(i) = eigenvalues(i) - old_eigenvalues(i);
+        }
+    
+    old_eigenvalues = eigenvalues;
+    residual = residual_vector.l2_norm();
+    }
 }
 
 template <int dim> void dGcGblowup<dim>::QR_decomposition (const FullMatrix<double> &matrix, FullMatrix<double> &Q, FullMatrix<double> &R) const
@@ -888,10 +959,10 @@ std::vector<Tensor<1,dim> > solution_time_derivative_face_gradient_neighbor_valu
 
 if (time_degree > 0)
 {
-create_temporal_mass_matrix (fe_time, temporal_mass_matrix_inv); temporal_mass_matrix_inv.gauss_jordan ();
+create_temporal_mass_matrix (fe_time, dof_handler_time, temporal_mass_matrix_inv); temporal_mass_matrix_inv.gauss_jordan ();
 
 if (dt == dt_old) {old_temporal_mass_matrix_inv = temporal_mass_matrix_inv;}
-else {create_temporal_mass_matrix (old_fe_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();}
+else {create_temporal_mass_matrix (old_fe_time, old_dof_handler_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();}
 }
     
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active (); typename DoFHandler<1>::active_cell_iterator old_time_cell = old_dof_handler_time.begin_active ();
@@ -1668,10 +1739,10 @@ std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
 if (time_degree > 0)
 {
-create_temporal_mass_matrix (fe_time, temporal_mass_matrix_inv); temporal_mass_matrix_inv.gauss_jordan ();
+create_temporal_mass_matrix (fe_time, dof_handler_time, temporal_mass_matrix_inv); temporal_mass_matrix_inv.gauss_jordan ();
 
 if (dt == dt_old) {old_temporal_mass_matrix_inv = temporal_mass_matrix_inv;}
-else {create_temporal_mass_matrix (old_fe_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();}
+else {create_temporal_mass_matrix (old_fe_time, old_dof_handler_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();}
 }
 
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active(); typename DoFHandler<1>::active_cell_iterator old_time_cell = old_dof_handler_time.begin_active();
@@ -2027,6 +2098,8 @@ refine_initial_mesh ();
 // Setup meshes
 old_triangulation_space.copy_triangulation (triangulation_space); old_old_triangulation_space.copy_triangulation (triangulation_space);
 GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.copy_triangulation (triangulation_time);
+
+compute_temporal_eigenvalues (eigenvalues, 1e-14);
 
 deallog << std::endl << "Setting up the initial mesh and time step length on the first time step..." << std::endl;
 
