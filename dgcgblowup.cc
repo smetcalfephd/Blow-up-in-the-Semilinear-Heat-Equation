@@ -109,11 +109,8 @@ private:
 	void create_system_matrix (); // Creates the system matrix
     void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &temporal_mass_matrix) const; // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
 	void create_time_derivative_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &time_derivative_matrix) const; // Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
-    void create_preconditioner ();
-    void compute_temporal_eigenvalues (Vector<double> &eigenvalues, const double &tol) const; // Computes temporal eigenvalues used to build the preconditioner
-    void QR_decomposition (const FullMatrix<double> &matrix, FullMatrix<double> &Q, FullMatrix<double> &R) const; // Computes the QR decomposition of a given input matrix via Gram-Schmidt
     void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const; // Computes the "energy projection" of the initial condition u_0 to the finite element function U_0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
-	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol); // Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solutions is below rel_tol*max(U)
+	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &tol); // Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solutions is below tol
     void refine_initial_mesh (); // Refines the initial mesh and recomputes the energy projection of the initial condition until ||u_0 - U_0|| < spatial_coarsening_threshold
     void refine_mesh (); // Refines all cells with refinement_vector(cell_no) > spatial_refinement_threshold and coarsens all cells with refinement_vector(cell_no) < spatial_coarsening_threshold
     void prepare_for_next_time_step (); // Prepares the vectors, triangulations and dof_handlers for the next time step by setting them to previous values
@@ -141,6 +138,7 @@ private:
 	SparsityPattern sparsity_pattern;
 
 	SparseMatrix<double> system_matrix;
+    SparseILU<double> preconditioner;
 
 	BlockVector<double> reordered_solution; // Reordered solution vector with each block representing a temporal node
 
@@ -150,7 +148,6 @@ private:
 	Vector<double> solution_plus; // The solution evaluated at final time on the current timestep
 	Vector<double> old_solution_plus; // The solution evaluated at final time on the previous timestep
 	Vector<double> old_old_solution_plus; // The solution evaluated at final time on the previous previous timestep
-    Vector<double> eigenvalues; //  The temporal eigenvalues used to build the preconditioner
     Vector<double> refinement_vector; // Vector used to refine the mesh
 };
 
@@ -326,6 +323,8 @@ double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0;
     constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix);
     previous_cell_size = cell_size; 
     }
+
+preconditioner.initialize (system_matrix);
 }
 
 // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
@@ -367,134 +366,6 @@ typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
             {
 	        time_derivative_matrix(r,s) += fe_values_time.shape_value(r,q_time)*fe_values_time.shape_grad(s,q_time)[0]*fe_values_time.JxW(q_time);
-            }
-}
-
-template <int dim> void dGcGblowup<dim>::create_preconditioner ()
-{
-}
-
-// Computes temporal eigenvalues used to build the preconditioner
-
-template <int dim> void dGcGblowup<dim>::compute_temporal_eigenvalues (Vector<double> &eigenvalues, const double &tol) const
-{
-Triangulation<1> triangulation_unit_time; GridGenerator::hyper_cube (triangulation_unit_time, -1, 1);
-DoFHandler<1> dof_handler_unit_time (triangulation_unit_time); FE_DGQ<1> fe_unit_time (time_degree); dof_handler_unit_time.distribute_dofs (fe_unit_time);
-
-const QGaussLobatto<1> quadrature_formula_time (time_degree + 2);
-FEValues<1> fe_values_unit_time (fe_unit_time, quadrature_formula_time, update_values | update_gradients | update_quadrature_points | update_JxW_values);
-
-FullMatrix<double> matrix (time_degree + 1, time_degree + 1);
-FullMatrix<double> Q_matrix (time_degree + 1, time_degree + 1);
-FullMatrix<double> R_matrix (time_degree + 1, time_degree + 1);
-FullMatrix<double> temporal_laplace_matrix (time_degree + 1, time_degree + 1);
-FullMatrix<double> temporal_mass_matrix (time_degree + 1, time_degree + 1);
-
-Vector<double> Q_values (time_degree + 2);
-Vector<double> Q_derivative_values (time_degree + 2);
-
-create_temporal_mass_matrix (fe_unit_time, dof_handler_unit_time, temporal_mass_matrix);
-
-typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_unit_time.begin_active (); fe_values_unit_time.reinit (time_cell);
-
-double Q_value = 0; double Q_second_derivative_value = 0;
-
-    for (unsigned int q_time = 0; q_time < time_degree + 2; ++q_time)
-    {
-    compute_Q_values (time_degree, fe_values_unit_time.quadrature_point(q_time)(0), Q_value, Q_derivative_values(q_time), Q_second_derivative_value);
-    }
-
-    for (unsigned int r = 0; r < time_degree + 1; ++r)
-        for (unsigned int s = 0; s < r + 1; ++s)
-        {
-            for (unsigned int q_time = 0; q_time < time_degree + 2; ++q_time)
-            {
-            temporal_laplace_matrix(r,s) += (fe_values_unit_time.shape_grad(r,q_time)[0] + 0.5*Q_derivative_values(q_time)*fe_values_unit_time.shape_value(r,0))*(fe_values_unit_time.shape_grad(s,q_time)[0] + 0.5*Q_derivative_values(q_time)*fe_values_unit_time.shape_value(s,0))*fe_values_unit_time.JxW(q_time);
-            }
-
-        temporal_laplace_matrix(s,r) = temporal_laplace_matrix(r,s);
-        }
-
-temporal_laplace_matrix.gauss_jordan ();
-temporal_laplace_matrix.mmult (matrix, temporal_mass_matrix);
-
-eigenvalues.reinit (time_degree + 1);
-Vector<double> old_eigenvalues (time_degree + 1); 
-Vector<double> residual_vector (time_degree + 1);
-
-double residual = 100;
-
-    while (residual > tol)
-    {    
-    QR_decomposition (matrix, Q_matrix, R_matrix);
-    R_matrix.mmult (matrix, Q_matrix);
-
-        for (unsigned int i = 0; i < time_degree + 1; ++i)
-        {
-        eigenvalues(i) = matrix(i,i);
-        residual_vector(i) = eigenvalues(i) - old_eigenvalues(i);
-        }
-    
-    old_eigenvalues = eigenvalues;
-    residual = residual_vector.l2_norm();
-    }
-}
-
-// Computes the QR decomposition of a given input matrix via Gram-Schmidt
-
-template <int dim> void dGcGblowup<dim>::QR_decomposition (const FullMatrix<double> &matrix, FullMatrix<double> &Q, FullMatrix<double> &R) const
-{
-const unsigned int n = matrix.m ();
-double inner_product = 0; double norm = 0;
-
-    for (unsigned int r = 0; r < n; ++r)
-    {      
-        for (unsigned int s = 0; s < n; ++s)
-        {
-        R(s,r) = matrix(s,r);
-        }
-
-        for (unsigned int s = 0; s < r; ++s)
-        {
-        norm = 0; inner_product = 0;
-
-            for (unsigned int t = 0; t < n; ++t)
-            {
-            norm += R(t,s)*R(t,s);
-            inner_product += matrix(t,r)*R(t,s);
-            }
-
-            for (unsigned int t = 0; t < n; ++t)
-            {
-            R(t,r) -= (inner_product/norm)*R(t,s);
-            }
-        }
-    }
-
-    for (unsigned int r = 0; r < n; ++r)
-    {
-    norm = 0;
-
-        for (unsigned int s = 0; s < n; ++s)
-        {
-        norm += R(s,r)*R(s,r);
-        }
-
-    norm = sqrt(norm);
-
-        for (unsigned int s = 0; s < n; ++s)
-        {
-        Q(s,r) = R(s,r)/norm;
-        }
-    }
-
-R = 0;
-
-    for (unsigned int r = 0; r < n; ++r)
-        for (unsigned int s = r; s < n; ++s)
-            for (unsigned int k = 0; k < n; ++k)
-            {
-            R(r,s) += Q(k,r)*matrix(k,s);
             }
 }
 
@@ -575,15 +446,15 @@ SolverBicgstab<> solver (solver_control, data);
 
 spatial_constraints.condense (laplace_matrix, right_hand_side);
 
-SparseILU<double> ilu; ilu.initialize (laplace_matrix);
-solver.solve (laplace_matrix, projection, right_hand_side, ilu);
+SparseILU<double> preconditioner; preconditioner.initialize (laplace_matrix);
+solver.solve (laplace_matrix, projection, right_hand_side, preconditioner);
 
 spatial_constraints.distribute (projection);
 }
 
-// Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solutions is below rel_tol*max(U)
+// Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solutions is below tol
 
-template <int dim> void dGcGblowup<dim>::assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol)
+template <int dim> void dGcGblowup<dim>::assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &tol)
 {
 deallog << "Calculating the numerical solution via Picard iteration..." << std::endl;
 
@@ -624,7 +495,7 @@ default: extend_to_constant_in_time_function (solution_plus, solution);
 
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active (); fe_values_time.reinit (time_cell);
 
-unsigned int iteration_number = 1; double residual = 0; double max = solution.linfty_norm ();
+unsigned int iteration_number = 1; double residual = 0;
 
     for (; iteration_number < max_iterations; ++iteration_number)
     {
@@ -675,11 +546,10 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
     SolverBicgstab<>::AdditionalData data; data.exact_residual = false;
 
-    SolverControl solver_control (1000, max*sqrt(max)*rel_tol*sqrt(rel_tol), false, false);
+    SolverControl solver_control (10000, 0.01*tol, false, false);
     SolverBicgstab<> solver (solver_control, data);
 
-    SparseILU<double> ilu; ilu.initialize (system_matrix);
-    solver.solve (system_matrix, solution, right_hand_side, ilu);
+    solver.solve (system_matrix, solution, right_hand_side, preconditioner);
 
     constraints.distribute (solution);
 
@@ -687,7 +557,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
     residual_vector.add (-1,solution);
     residual = residual_vector.l2_norm ();
 
-    if (residual < max*rel_tol) {break;} // Terminate the Picard iteration when the residual is sufficiently small
+    if (residual < tol) {break;} // Terminate the Picard iteration when the residual is sufficiently small
     }
 
 switch(time_degree) {case 0: solution_plus = solution; break; default: reorder_solution_vector (solution, reordered_solution, dof_handler_space, dof_handler, fe); solution_plus = reordered_solution.block(time_degree);}
@@ -2103,8 +1973,6 @@ refine_initial_mesh ();
 old_triangulation_space.copy_triangulation (triangulation_space); old_old_triangulation_space.copy_triangulation (triangulation_space);
 GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.copy_triangulation (triangulation_time);
 
-compute_temporal_eigenvalues (eigenvalues, 1e-14);
-
 deallog << std::endl << "Setting up the initial mesh and time step length on the first time step..." << std::endl;
 
     for (; fabs(delta_residual) < delta_residual_threshold; ++timestep_number)
@@ -2123,7 +1991,7 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
 
     energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
     output_solution ();
-    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
+    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 100, 1e-11); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1, true); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
 
@@ -2141,7 +2009,7 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
     }
     else
     {
-    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
+    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 100, 1e-11); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1, true); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
 
@@ -2160,7 +2028,7 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
     deallog << "Recomputing the solution..." << std::endl << std::endl;
 
     setup_system_partial ();
-    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 20, 1e-8); // Setup and solve the system and output the numerical solution
+    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 100, 1e-11); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1, false); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
     }
