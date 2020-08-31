@@ -503,17 +503,15 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
     for (; iteration_number < max_iterations; ++iteration_number)
     {
+    system_matrix.reinit (sparsity_pattern); system_matrix.add (1, static_system_matrix); // Set the system matrix to the static part of the system matrix
+
     typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active ();
     typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (), final_cell = dof_handler.end ();
-
-    system_matrix.reinit (sparsity_pattern); system_matrix.add (1, static_system_matrix);
 
     residual_vector = solution;
 
     right_hand_side = 0;
-
-    // Assemble the right-hand side vector
-
+    
         for (; cell != final_cell; ++cell, ++space_cell)
         {
         local_system_matrix = 0; local_right_hand_side = 0;
@@ -529,7 +527,9 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                 for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
                 {
                 solution_values(q_space + q_time*no_q_space) *= fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
-                } 
+                }  
+
+            // Assemble the local contributions of the dynamic part of the system matrix
 
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
             {
@@ -552,6 +552,8 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                 {
                 nonlinearity_values(q_space + q_time*no_q_space) *= solution_values(q_space + q_time*no_q_space);
                 } 
+       
+        // If on the first Newton iteration, assemble the local contributions of the static right-hand side vector and place them in the global static right-hand side vector
 
         if (iteration_number == 1)
         {
@@ -570,8 +572,9 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
         constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, static_right_hand_side);
         local_right_hand_side = 0;
-        }
+        } 
 
+        // Assemble the local contributions of the dynamic part of the right-hand side vector
 
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
             {
@@ -583,12 +586,13 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 	                local_right_hand_side(i) -= nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_time.shape_value(comp_t_i,q_time);
  	                }
             }
-
+       
+        // Distribute the local contributions of the dynamic parts of the system matrix and right-hand side vector to the global system matrix and global right-hand side vector
         constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix);
         constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, right_hand_side);
         } 
 
-    right_hand_side.add (1, static_right_hand_side);
+    right_hand_side.add (1, static_right_hand_side); // Add the static right-hand side vector to the right-hand side vector
 
     // Solve the matrix-vector system
 
@@ -607,7 +611,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
     residual_vector.add (-1,solution);
     residual = residual_vector.l2_norm ();
 
-    if (residual < max*rel_tol) {break;} // Terminate the Picard iteration when the residual is sufficiently small
+    if (residual < max*rel_tol) {break;} // Terminate the Newton iteration when the difference in solutions is sufficiently small
     }
 
 switch(time_degree) {case 0: solution_plus = solution; break; default: reorder_solution_vector (solution, reordered_solution, dof_handler_space, dof_handler, fe); solution_plus = reordered_solution.block(time_degree);}
