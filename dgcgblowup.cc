@@ -80,7 +80,7 @@ public:
 	const unsigned int time_degree = 1; // Temporal polynomial degree
     unsigned int timestep_number = 0; // The current timestep
     double time = 0; // The current time
-    double dt = 0.1*0.215; // The current timestep length
+    double dt = 0.5*0.215; // The current timestep length
 	double dt_old = dt; // The timestep length on the last time interval
 
 	// Error estimator parameters
@@ -104,13 +104,13 @@ public:
 
 private:
 
-    void setup_system_full (); // Initialises all vectors, distributes all degrees of freedom and computes the system matrix
-	void setup_system_partial (); // Reinitialises vectors and redistributes degrees of freedom related to the current triangulation. Also recomputes the system matrix. Required if the mesh or time step length changes
-	void create_static_system_matrix (); // Creates the system matrix
+    void setup_system_full (); // Initialises all vectors, distributes all degrees of freedom and computes the static part of the system matrix
+	void setup_system_partial (); // Reinitialises vectors and redistributes degrees of freedom related to the current triangulation. Also recomputes the static part of the system matrix. Required if the mesh or time step length changes
+	void create_static_system_matrix (); // Creates the static part of the system matrix, i.e., that which does not change between Newton iterations
     void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &temporal_mass_matrix) const; // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
 	void create_time_derivative_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &time_derivative_matrix) const; // Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
     void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const; // Computes the "energy projection" of the initial condition u_0 to the finite element function U_0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
-	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol); // Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solution is below ||U||*rel_tol
+	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol); // Assembles the right-hand side vector and solves the nonlinear system via Newton iterates until the difference in solutions is below ||U||*rel_tol
     void refine_initial_mesh (); // Refines the initial mesh and recomputes the energy projection of the initial condition until ||u_0 - U_0|| < spatial_coarsening_threshold
     void refine_mesh (); // Refines all cells with refinement_vector(cell_no) > spatial_refinement_threshold and coarsens all cells with refinement_vector(cell_no) < spatial_coarsening_threshold
     void prepare_for_next_time_step (); // Prepares the vectors, triangulations and dof_handlers for the next time step by setting them to previous values
@@ -137,14 +137,15 @@ private:
 	ConstraintMatrix constraints;
 	SparsityPattern sparsity_pattern;
 
-	SparseMatrix<double> system_matrix;
-    SparseMatrix<double> static_system_matrix;
+	SparseMatrix<double> system_matrix; // The system matrix is subdivided into a static portion which does not change between newton iterations and a dynamic portion which does 
+    SparseMatrix<double> static_system_matrix; // The static part of the system matrix
+
     SparseILU<double> preconditioner;
 
 	BlockVector<double> reordered_solution; // Reordered solution vector with each block representing a temporal node
-
-	Vector<double> right_hand_side;
-    Vector<double> static_right_hand_side;
+ 
+	Vector<double> right_hand_side; // The right-hand side is subdivided into a static portion which does not change between newton iterations and a dynamic portion which does
+    Vector<double> static_right_hand_side; // The static part of the right-hand side
 	Vector<double> solution; // The solution on the current timestep
 	Vector<double> old_solution; // The solution on the previous timestep
 	Vector<double> solution_plus; // The solution evaluated at final time on the current timestep
@@ -163,7 +164,7 @@ template <int dim> dGcGblowup<dim>::dGcGblowup ()
 				fe (fe_space, time_degree + 1), old_fe (old_fe_space, time_degree + 1)
 {}
 
-// Initialises all vectors, distributes all degrees of freedom and computes the system matrix
+// Initialises all vectors, distributes all degrees of freedom and computes the static part of the system matrix
 
 template <int dim> void dGcGblowup<dim>::setup_system_full ()
 {
@@ -208,7 +209,7 @@ refinement_vector.reinit (no_of_cells);
 create_static_system_matrix ();
 }
 
-// Reinitialises vectors and redistributes degrees of freedom related to the current triangulation. Also recomputes the system matrix. Required if the mesh or time step length changes
+// Reinitialises vectors and redistributes degrees of freedom related to the current triangulation. Also recomputes the static part of the system matrix. Required if the mesh or time step length changes
 
 template <int dim> void dGcGblowup<dim>::setup_system_partial ()
 {
@@ -251,7 +252,7 @@ refinement_vector.reinit (no_of_cells);
 create_static_system_matrix ();
 }
 
-// Creates the system matrix
+// Creates the static part of the system matrix, i.e., that which does not change between Newton iterations
 
 template <int dim> void dGcGblowup<dim>::create_static_system_matrix ()
 {
@@ -453,7 +454,7 @@ solver.solve (laplace_matrix, projection, right_hand_side, preconditioner);
 spatial_constraints.distribute (projection);
 }
 
-// Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solution is below ||U||*rel_tol
+// Assembles the right-hand side vector and solves the nonlinear system via Newton iterates until the difference in solutions is below ||U||*rel_tol
 
 template <int dim> void dGcGblowup<dim>::assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol)
 {
@@ -469,6 +470,7 @@ const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
 FullMatrix<double> local_system_matrix (dofs_per_cell, dofs_per_cell);
 std::vector<double> old_solution_plus_values (no_q_space);
+Vector<double> solution_values (no_q_space*no_q_time);
 Vector<double> nonlinearity_values (no_q_space*no_q_time);
 Vector<double> residual_vector (dof_handler.n_dofs());
 Vector<double> local_right_hand_side (dofs_per_cell);
@@ -520,13 +522,14 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
         cell->get_dof_indices (local_dof_indices);
 
         if (iteration_number == 1) {old_solution_plus_function.value_list (fe_values_space.get_quadrature_points(), old_solution_plus_values);}
-        get_spacetime_function_values (solution, fe_values_space, fe_values_time, local_dof_indices, nonlinearity_values);
+        get_spacetime_function_values (solution, fe_values_space, fe_values_time, local_dof_indices, solution_values); 
+        nonlinearity_values = solution_values;
 
-  //          for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-  //              for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-  //              {
-   //             nonlinearity_values(q_space + q_time*no_q_space) *= fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
-    //            } 
+            for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+                for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+                {
+                solution_values(q_space + q_time*no_q_space) *= fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
+                } 
 
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
             {
@@ -539,7 +542,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                     for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                         for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
                         {
-                        local_system_matrix(k,l) -= 2*nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_k,q_space)*fe_values_space.shape_value(comp_s_l,q_space)*fe_values_time.shape_value(comp_t_k,q_time)*fe_values_time.shape_value(comp_t_l,q_time)*fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
+                        local_system_matrix(k,l) -= 2*solution_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_k,q_space)*fe_values_space.shape_value(comp_s_l,q_space)*fe_values_time.shape_value(comp_t_k,q_time)*fe_values_time.shape_value(comp_t_l,q_time);
                         }
                 }
             }
@@ -547,7 +550,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
             for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                 for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
                 {
-                nonlinearity_values(q_space + q_time*no_q_space) *= nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
+                nonlinearity_values(q_space + q_time*no_q_space) *= solution_values(q_space + q_time*no_q_space);
                 } 
 
         if (iteration_number == 1)
