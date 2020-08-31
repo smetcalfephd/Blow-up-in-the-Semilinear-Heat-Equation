@@ -106,11 +106,11 @@ private:
 
     void setup_system_full (); // Initialises all vectors, distributes all degrees of freedom and computes the system matrix
 	void setup_system_partial (); // Reinitialises vectors and redistributes degrees of freedom related to the current triangulation. Also recomputes the system matrix. Required if the mesh or time step length changes
-	void create_system_matrix (); // Creates the system matrix
+	void create_static_system_matrix (); // Creates the system matrix
     void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &temporal_mass_matrix) const; // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
 	void create_time_derivative_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &time_derivative_matrix) const; // Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
     void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const; // Computes the "energy projection" of the initial condition u_0 to the finite element function U_0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
-	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &tol); // Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solutions is below tol
+	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol); // Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solution is below ||U||*rel_tol
     void refine_initial_mesh (); // Refines the initial mesh and recomputes the energy projection of the initial condition until ||u_0 - U_0|| < spatial_coarsening_threshold
     void refine_mesh (); // Refines all cells with refinement_vector(cell_no) > spatial_refinement_threshold and coarsens all cells with refinement_vector(cell_no) < spatial_coarsening_threshold
     void prepare_for_next_time_step (); // Prepares the vectors, triangulations and dof_handlers for the next time step by setting them to previous values
@@ -138,11 +138,13 @@ private:
 	SparsityPattern sparsity_pattern;
 
 	SparseMatrix<double> system_matrix;
+    SparseMatrix<double> static_system_matrix;
     SparseILU<double> preconditioner;
 
 	BlockVector<double> reordered_solution; // Reordered solution vector with each block representing a temporal node
 
 	Vector<double> right_hand_side;
+    Vector<double> static_right_hand_side;
 	Vector<double> solution; // The solution on the current timestep
 	Vector<double> old_solution; // The solution on the previous timestep
 	Vector<double> solution_plus; // The solution evaluated at final time on the current timestep
@@ -185,8 +187,6 @@ DynamicSparsityPattern dsp (no_of_dofs);
 DoFTools::make_sparsity_pattern (dof_handler, dsp, constraints, false);
 sparsity_pattern.copy_from (dsp);
 
-system_matrix.reinit (sparsity_pattern);
-
 reordered_solution.reinit (time_degree + 1);
 
     for (unsigned int r = 0; r < time_degree + 1; ++r)
@@ -197,6 +197,7 @@ reordered_solution.reinit (time_degree + 1);
 reordered_solution.collect_sizes ();
 
 right_hand_side.reinit (no_of_dofs);
+static_right_hand_side.reinit (no_of_dofs);
 solution.reinit (no_of_dofs);
 old_solution.reinit (no_of_old_dofs);
 solution_plus.reinit (no_of_space_dofs);
@@ -204,7 +205,7 @@ old_solution_plus.reinit (no_of_old_space_dofs);
 old_old_solution_plus.reinit (no_of_old_old_space_dofs);
 refinement_vector.reinit (no_of_cells);
 
-create_system_matrix ();
+create_static_system_matrix ();
 }
 
 // Reinitialises vectors and redistributes degrees of freedom related to the current triangulation. Also recomputes the system matrix. Required if the mesh or time step length changes
@@ -241,19 +242,21 @@ reordered_solution.block(i).reinit (no_of_space_dofs);
 reordered_solution.collect_sizes ();
 
 right_hand_side.reinit (no_of_dofs);
+static_right_hand_side.reinit (no_of_dofs);
 solution.reinit (no_of_dofs);
 solution_plus.reinit (no_of_space_dofs);
 refinement_vector.reinit (no_of_cells);
 }
 
-system_matrix.reinit (sparsity_pattern);
-create_system_matrix ();
+create_static_system_matrix ();
 }
 
 // Creates the system matrix
 
-template <int dim> void dGcGblowup<dim>::create_system_matrix ()
+template <int dim> void dGcGblowup<dim>::create_static_system_matrix ()
 {
+static_system_matrix.reinit (sparsity_pattern);
+
 const QGauss<dim> quadrature_formula_space (space_degree + 1);
 
 FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values | update_gradients | update_JxW_values);
@@ -320,11 +323,9 @@ double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0;
         }
     }
 
-    constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix);
+    constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, static_system_matrix);
     previous_cell_size = cell_size; 
     }
-
-preconditioner.initialize (system_matrix);
 }
 
 // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
@@ -452,11 +453,11 @@ solver.solve (laplace_matrix, projection, right_hand_side, preconditioner);
 spatial_constraints.distribute (projection);
 }
 
-// Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solutions is below tol
+// Assembles the right-hand side vector and solves the nonlinear system via Picard iterates until the difference in solution is below ||U||*rel_tol
 
-template <int dim> void dGcGblowup<dim>::assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &tol)
+template <int dim> void dGcGblowup<dim>::assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol)
 {
-deallog << "Calculating the numerical solution via Picard iteration..." << std::endl;
+deallog << "Calculating the numerical solution via Newton iteration..." << std::endl;
 
 const QGauss<dim> quadrature_formula_space (no_q_space_x); const QGauss<1> quadrature_formula_time (no_q_time);
 
@@ -466,6 +467,7 @@ FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | up
 const unsigned int no_q_space = quadrature_formula_space.size();
 const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
+FullMatrix<double> local_system_matrix (dofs_per_cell, dofs_per_cell);
 std::vector<double> old_solution_plus_values (no_q_space);
 Vector<double> nonlinearity_values (no_q_space*no_q_time);
 Vector<double> residual_vector (dof_handler.n_dofs());
@@ -495,12 +497,14 @@ default: extend_to_constant_in_time_function (solution_plus, solution);
 
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active (); fe_values_time.reinit (time_cell);
 
-unsigned int iteration_number = 1; double residual = 0;
+unsigned int iteration_number = 1; double residual = 0; double max = solution.linfty_norm(); static_right_hand_side = 0; 
 
     for (; iteration_number < max_iterations; ++iteration_number)
     {
     typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active ();
     typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (), final_cell = dof_handler.end ();
+
+    system_matrix.reinit (sparsity_pattern); system_matrix.add (1, static_system_matrix);
 
     residual_vector = solution;
 
@@ -510,13 +514,35 @@ unsigned int iteration_number = 1; double residual = 0;
 
         for (; cell != final_cell; ++cell, ++space_cell)
         {
-        local_right_hand_side = 0;
+        local_system_matrix = 0; local_right_hand_side = 0;
         fe_values_space.reinit (space_cell);
 
         cell->get_dof_indices (local_dof_indices);
 
-        old_solution_plus_function.value_list (fe_values_space.get_quadrature_points(), old_solution_plus_values); 
+        if (iteration_number == 1) {old_solution_plus_function.value_list (fe_values_space.get_quadrature_points(), old_solution_plus_values);}
         get_spacetime_function_values (solution, fe_values_space, fe_values_time, local_dof_indices, nonlinearity_values);
+
+  //          for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+  //              for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+  //              {
+   //             nonlinearity_values(q_space + q_time*no_q_space) *= fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
+    //            } 
+
+            for (unsigned int k = 0; k < dofs_per_cell; ++k)
+            {
+            unsigned int comp_s_k = fe.system_to_component_index(k).second; unsigned int comp_t_k = fe.system_to_component_index(k).first;
+
+                for (unsigned int l = 0; l < dofs_per_cell; ++l)
+                {
+                unsigned int comp_s_l = fe.system_to_component_index(l).second; unsigned int comp_t_l = fe.system_to_component_index(l).first;
+
+                    for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+                        for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+                        {
+                        local_system_matrix(k,l) -= 2*nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_k,q_space)*fe_values_space.shape_value(comp_s_l,q_space)*fe_values_time.shape_value(comp_t_k,q_time)*fe_values_time.shape_value(comp_t_l,q_time)*fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
+                        }
+                }
+            }
 
             for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                 for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
@@ -524,30 +550,51 @@ unsigned int iteration_number = 1; double residual = 0;
                 nonlinearity_values(q_space + q_time*no_q_space) *= nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
                 } 
 
+        if (iteration_number == 1)
+        {
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            {
+            unsigned int comp_s_i = fe.system_to_component_index(i).second; unsigned int comp_t_i = fe.system_to_component_index(i).first;
+
+            if (comp_t_i == 0)
+            {
+                for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+                {
+                local_right_hand_side(i) += old_solution_plus_values[q_space]*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_space.JxW(q_space);
+                }
+            }
+            }
+
+        constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, static_right_hand_side);
+        local_right_hand_side = 0;
+        }
+
+
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
             {
             unsigned int comp_s_i = fe.system_to_component_index(i).second; unsigned int comp_t_i = fe.system_to_component_index(i).first;
 
                 for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-                {
                     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
 	                {
-	                local_right_hand_side(i) += nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_time.shape_value(comp_t_i,q_time);
+	                local_right_hand_side(i) -= nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_time.shape_value(comp_t_i,q_time);
  	                }
-
-                if (comp_t_i == 0) {local_right_hand_side(i) += old_solution_plus_values[q_space]*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_space.JxW(q_space);}
-                }
             }
 
+        constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix);
         constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, right_hand_side);
         } 
+
+    right_hand_side.add (1, static_right_hand_side);
 
     // Solve the matrix-vector system
 
     SolverBicgstab<>::AdditionalData data; data.exact_residual = false;
 
-    SolverControl solver_control (10000, 0.01*tol, false, false);
+    SolverControl solver_control (10000, 0.001*max*rel_tol, false, false);
     SolverBicgstab<> solver (solver_control, data);
+
+    preconditioner.initialize (system_matrix);
 
     solver.solve (system_matrix, solution, right_hand_side, preconditioner);
 
@@ -557,7 +604,7 @@ unsigned int iteration_number = 1; double residual = 0;
     residual_vector.add (-1,solution);
     residual = residual_vector.l2_norm ();
 
-    if (residual < tol) {break;} // Terminate the Picard iteration when the residual is sufficiently small
+    if (residual < max*rel_tol) {break;} // Terminate the Picard iteration when the residual is sufficiently small
     }
 
 switch(time_degree) {case 0: solution_plus = solution; break; default: reorder_solution_vector (solution, reordered_solution, dof_handler_space, dof_handler, fe); solution_plus = reordered_solution.block(time_degree);}
@@ -1991,7 +2038,7 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
 
     energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
     output_solution ();
-    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 100, 1e-11); // Setup and solve the system and output the numerical solution
+    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 100, 1e-13); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1, true); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
 
@@ -2009,7 +2056,7 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
     }
     else
     {
-    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 100, 1e-11); // Setup and solve the system and output the numerical solution
+    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 100, 1e-13); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1, true); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
 
@@ -2028,7 +2075,7 @@ deallog << std::endl << "Setting up the initial mesh and time step length on the
     deallog << "Recomputing the solution..." << std::endl << std::endl;
 
     setup_system_partial ();
-    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 100, 1e-11); // Setup and solve the system and output the numerical solution
+    assemble_and_solve (int((3*space_degree + 1)/2) + 1, int((3*time_degree + 1)/2) + 1, 100, 1e-13); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1, false); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2) + 1, int((3*time_degree + 3)/2) + 1); // Compute the time estimator
     }
