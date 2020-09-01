@@ -1939,7 +1939,7 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; doubl
 
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
             {
-            const unsigned int comp_s_i = fe.system_to_component_index(i).second; const unsigned int comp_t_i = fe.system_to_component_index(i).first;
+            const unsigned int comp_s_i = fe_union.system_to_component_index(i).second; const unsigned int comp_t_i = fe_union.system_to_component_index(i).first;
 
             solution_time_derivative_value += solution_union(local_dof_indices[i])*fe_values_space_union.shape_value(comp_s_i, q_space)*fe_values_time.shape_grad(comp_t_i, 0)[0];
             }
