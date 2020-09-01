@@ -609,7 +609,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
     // Compute the residual
     residual_vector.add (-1, solution);
-    residual = residual_vector.l2_norm ();
+    residual = residual_vector.linfty_norm ();
 
     if (residual < max*rel_tol) {break;} // Terminate the Newton iteration when the difference in solutions is sufficiently small
     }
@@ -2114,7 +2114,7 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
 
     energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
     output_solution ();
-    assemble_and_solve (int((3*space_degree + 3)/2), int((3*time_degree + 3)/2), 100, 1e-13); // Setup and solve the system and output the numerical solution
+    assemble_and_solve (int((3*space_degree + 3)/2), int((3*time_degree + 3)/2), 15, 1e-13); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2), true); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2)); // Compute the time estimator
 
@@ -2132,7 +2132,7 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
     }
     else
     {
-    assemble_and_solve (int((3*space_degree + 3)/2), int((3*time_degree + 3)/2), 100, 1e-13); // Setup and solve the system and output the numerical solution
+    assemble_and_solve (int((3*space_degree + 3)/2), int((3*time_degree + 3)/2), 15, 1e-13); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2), true); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2)); // Compute the time estimator
 
@@ -2151,7 +2151,7 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
     deallog << "Recomputing the solution..." << std::endl << std::endl;
 
     setup_system_partial ();
-    assemble_and_solve (int((3*space_degree + 3)/2), int((3*time_degree + 3)/2), 100, 1e-13); // Setup and solve the system and output the numerical solution
+    assemble_and_solve (int((3*space_degree + 3)/2), int((3*time_degree + 3)/2), 15, 1e-13); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2), false); // Compute the space estimator
     compute_time_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2)); // Compute the time estimator
     }
