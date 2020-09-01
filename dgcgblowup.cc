@@ -842,6 +842,7 @@ Q_value *= 0.5*std::pow(-1, degree); Q_derivative_value *= std::pow(-1, degree);
 }
 
 // Computes the space estimator. Optional argument specifies whether we ouptut the refinement vector needed for spatial mesh refinement
+// The space estimator is split into two parts: a cell residual and an edge residual both of which must be computed
 // For efficiency is decomposed into two possibilities
 // If mesh_change == false and old_mesh_change == false, all meshes are the same and so we just compute on the current grid
 // If either mesh_change == true or old_mesh_change == true, some meshes are different so we must form the UNION MESH then interpolate all vectors to it and work over this grid
@@ -859,8 +860,8 @@ const unsigned int dofs_per_cell = fe.dofs_per_cell;
 FullMatrix<double> temporal_mass_matrix_inv (time_degree + 1, time_degree + 1);
 FullMatrix<double> old_temporal_mass_matrix_inv (time_degree + 1, time_degree + 1);
 
-BlockVector<double> space_estimator_values (no_q_time);
-BlockVector<double> space_derivative_estimator_values (no_q_time);
+BlockVector<double> space_estimator_values (no_q_time); // Stores the space estimator values, cellwise, at each temporal quadrature point
+BlockVector<double> space_derivative_estimator_values (no_q_time); // Stores the space derivative estimator values, cellwise, at each temporal quadrature point
 BlockVector<double> reordered_solution_at_temporal_quadrature_points (no_q_time);
 BlockVector<double> reordered_solution_time_derivative_at_temporal_quadrature_points (no_q_time);
 
@@ -906,7 +907,7 @@ fe_values_time.reinit (time_cell); old_fe_values_time.reinit (old_time_cell);
     compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values(q_time), Q_derivative_values(q_time), Q_second_derivative_values(q_time));
     }
 
-if (mesh_change == false && old_mesh_change == false)
+if (mesh_change == false && old_mesh_change == false) // If mesh_change == false and old_mesh_change == false, all meshes are the same and so we just compute on the current grid
 {
 FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values | update_hessians | update_quadrature_points);
 FEFaceValues<dim> fe_values_space_face (fe_space, quadrature_formula_space_face, update_gradients);
@@ -932,6 +933,8 @@ reordered_solution_time_derivative_at_temporal_quadrature_points.collect_sizes (
 typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (), final_cell = dof_handler.end ();
 typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active ();
 
+// At each temporal quadrature point, compute the spatial finite element coefficients which define the spacetime function and it's temporal derivative at that point
+
 if (time_degree > 0)
 {
     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
@@ -944,11 +947,13 @@ if (time_degree > 0)
 }
 
 double h = 0; double h_min = GridTools::minimal_cell_diameter (triangulation_space); double ell_h = log(2 + 1/h_min); double C_cell = 0; double C_edge = 0;
-etaS = 0; double space_estimator_jump_value = 0; double nonlinearity_value = 0;
+etaS = 0; double space_estimator_jump_value = 0; double jump_value = 0; double nonlinearity_value = 0;
 if (output_refinement_vector == true) {refinement_vector = 0;}
 
     for (; cell != final_cell; ++cell, ++space_cell)
     {
+    // Compute the cell residual contribution to the space and space derivative estimators
+
     estimator_values = 0; derivative_estimator_values = 0;
     fe_values_space.reinit (space_cell);
     cell->get_dof_indices (local_dof_indices);
@@ -978,14 +983,14 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
             for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
 	        {
             solution_values (q_space + q_time*no_q_space) = solution_values_temp[q_space]; solution_time_derivative_values (q_space + q_time*no_q_space) = solution_time_derivative_values_temp[q_space];
-            if (space_degree > 1) {solution_laplacian_values (q_space + q_time*no_q_space) = a*trace(solution_hessian_values[q_space]); solution_time_derivative_laplacian_values(q_space + q_time*no_q_space) = a*trace(solution_time_derivative_hessian_values[q_space]);}
+            if (space_degree > 1) {solution_laplacian_values (q_space + q_time*no_q_space) = a*trace(solution_hessian_values[q_space]); solution_time_derivative_laplacian_values (q_space + q_time*no_q_space) = a*trace(solution_time_derivative_hessian_values[q_space]);}
             }
         }
     }
 
     if (timestep_number > 1) {get_spacetime_function_values (old_solution, fe_values_space, old_fe_values_time, local_dof_indices, old_solution_values); fe_values_space.get_function_values (old_old_solution_plus, old_old_solution_plus_values);}
     else {fe_values_space.get_function_values (old_solution_plus, old_old_solution_plus_values); for (unsigned int q_space = 0; q_space < no_q_space; ++q_space) {old_solution_values (q_space + (no_q_time - 1)*no_q_space) = old_old_solution_plus_values[q_space];} 
-    initialvalueslaplacian<dim>().value_list (fe_values_space.get_quadrature_points(), old_old_solution_plus_values); fe_values_space.get_function_hessians (old_solution_plus, solution_hessian_values);}
+    initialvalueslaplacian<dim>().value_list (fe_values_space.get_quadrature_points(), old_old_solution_plus_values); if (space_degree > 1) {fe_values_space.get_function_hessians (old_solution_plus, solution_hessian_values);}}
     
         for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
         {
@@ -1045,28 +1050,33 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 
         temporal_mass_matrix_inv.vmult (L2_projection_f, L2_projection_rhs);
         fe_values_time.get_function_values (L2_projection_f, L2_projection_f_values);
-        fe_values_time.get_function_gradients (L2_projection_f, L2_projection_f_time_derivative_values);
+        if (time_degree > 0) {fe_values_time.get_function_gradients (L2_projection_f, L2_projection_f_time_derivative_values);}
         }
 
+        if (time_degree > 1)
+        {
         solution_second_time_derivative_values = 0;
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
    	            for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 {
-                const unsigned int comp_s_i = fe.system_to_component_index(i).second;
-                const unsigned int comp_t_i = fe.system_to_component_index(i).first;
+                const unsigned int comp_s_i = fe.system_to_component_index(i).second; const unsigned int comp_t_i = fe.system_to_component_index(i).first;
 
    	            solution_second_time_derivative_values(q_time) += solution(local_dof_indices[i])*fe_values_space.shape_value(comp_s_i, q_space)*fe_values_time.shape_hessian(comp_t_i, q_time)[0][0];
 		        }
+        }
 
-        space_estimator_jump_value += L2_projection_f_values[0] - solution_time_derivative_values(q_space) - (1/dt)*Q_derivative_values(0)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space)) + solution_laplacian_values(q_space);
+        jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
+        space_estimator_jump_value += L2_projection_f_values[0] - solution_time_derivative_values(q_space) - (1/dt)*Q_derivative_values(0)*jump_value + solution_laplacian_values(q_space);
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
 	        {
-	        estimator_values(q_time) = fmax(estimator_values(q_time), fabs(L2_projection_f_values[q_time] - solution_time_derivative_values(q_space + q_time*no_q_space) - (1/dt)*Q_derivative_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space)) + solution_laplacian_values(q_space + q_time*no_q_space) + Q_values(q_time)*space_estimator_jump_value)); 
-	        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(L2_projection_f_time_derivative_values[q_time][0] - solution_second_time_derivative_values(q_time) - (1/dt)*(1/dt)*Q_second_derivative_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space)) + solution_time_derivative_laplacian_values(q_space + q_time*no_q_space) + (1/dt)*Q_derivative_values(q_time)*space_estimator_jump_value));
+	        estimator_values(q_time) = fmax(estimator_values(q_time), fabs(L2_projection_f_values[q_time] - solution_time_derivative_values(q_space + q_time*no_q_space) - (1/dt)*Q_derivative_values(q_time)*jump_value + solution_laplacian_values(q_space + q_time*no_q_space) + Q_values(q_time)*space_estimator_jump_value)); 
+	        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(L2_projection_f_time_derivative_values[q_time][0] - solution_second_time_derivative_values(q_time) - (1/dt)*(1/dt)*Q_second_derivative_values(q_time)*jump_value + solution_time_derivative_laplacian_values(q_space + q_time*no_q_space) + (1/dt)*Q_derivative_values(q_time)*space_estimator_jump_value));
 	        }
         }
+
+        // Multiply the cell residuals by C_cell and place them into the block vectors
 
         for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
         {
@@ -1076,9 +1086,16 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 
     estimator_values = 0; derivative_estimator_values = 0;
 
+    // Loop over all faces and compute the edge residual contribution to the space and space derivative estimators
+    // We must subdivide this into four cases:
+    // If the face is on the boundary, we do nothing
+    // If both faces are the same size, we simply compute with matching values
+    // If the neighbor face is coarser, for the neighbor face we must compute by restricting the values to the current face
+    // If the neighbor face is more refined, we must loop over all subfaces and restrict the values on the current face to the subfaces
+
         for (unsigned int face = 0; face < 4; ++face)
         {
-        if (space_cell->face(face)->at_boundary() == false && space_cell->face(face)->has_children() == false && space_cell->neighbor_is_coarser(face) == false)
+        if (space_cell->face(face)->at_boundary() == false && space_cell->face(face)->has_children() == false && space_cell->neighbor_is_coarser(face) == false) // Both faces are the same size
         {
 		typename DoFHandler<dim>::active_cell_iterator space_cell_neighbor = space_cell->neighbor (face);
 		const unsigned int neighbor_face_no = space_cell->neighbor_face_no (face);
@@ -1119,7 +1136,7 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 			    }
             }	 
         }
-        if (space_cell->face(face)->at_boundary() == false && space_cell->face(face)->has_children() == false && space_cell->neighbor_is_coarser(face) == true)
+        if (space_cell->face(face)->at_boundary() == false && space_cell->face(face)->has_children() == false && space_cell->neighbor_is_coarser(face) == true) // The neighbor face is coarser than the current face
         {
         typename DoFHandler<dim>::active_cell_iterator space_cell_neighbor = space_cell->neighbor (face);
         std::pair<unsigned int, unsigned int> neighbor_face_no = space_cell->neighbor_of_coarser_neighbor (face);
@@ -1160,7 +1177,7 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 			    }
             }
         }
-        if (space_cell->face(face)->at_boundary() == false && space_cell->face(face)->has_children() == true && space_cell->neighbor_is_coarser(face) == false)
+        if (space_cell->face(face)->at_boundary() == false && space_cell->face(face)->has_children() == true && space_cell->neighbor_is_coarser(face) == false) // The neighbor face is more refined than the current face 
         {
         const unsigned int no_of_subfaces = space_cell->face(face)->n_children();
         const unsigned int neighbor_face_no = space_cell->neighbor_of_neighbor (face);
@@ -1208,6 +1225,8 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
         }
         }
 
+        // Multiply the edge residuals by C_edge and place them into the block vectors
+
         for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
         {
         space_estimator_values.block(q_time)(cell_no) += C_edge*estimator_values(q_time);
@@ -1216,6 +1235,8 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
     }
 
 Vector<double> reconstructed_solution_at_q_time (no_of_space_dofs);
+
+    // Loop over all temporal quadrature points to compute the space estimator and, if requested, the refinement vector
 
     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
     {
@@ -1241,8 +1262,10 @@ Vector<double> reconstructed_solution_at_q_time (no_of_space_dofs);
 
 if (output_refinement_vector == true) {refinement_vector *= 1/dt;}
 }
-else
+else // If either mesh_change == true or old_mesh_change == true, some meshes are different so we must form the UNION MESH then interpolate all vectors to it and work over this grid
 {
+// Form the union mesh
+
 Triangulation<dim> union_triangulation;
 
 if (mesh_change == true && old_mesh_change == false)
@@ -1259,6 +1282,8 @@ Triangulation<dim> intermediate_triangulation;
 GridGenerator::create_union_triangulation (old_old_triangulation_space, old_triangulation_space, intermediate_triangulation);
 GridGenerator::create_union_triangulation (triangulation_space, intermediate_triangulation, union_triangulation);
 }
+
+// Create relevant union mesh dof_handler and fe objects
 
 DoFHandler<dim> dof_handler_space_union (union_triangulation); FE_Q<dim> fe_space_union (space_degree); dof_handler_space_union.distribute_dofs (fe_space_union);
 DoFHandler<dim> dof_handler_union (union_triangulation); FESystem<dim> fe_union (fe_space_union, time_degree + 1); dof_handler_union.distribute_dofs (fe_union);
@@ -1308,6 +1333,8 @@ space_derivative_estimator_values.collect_sizes ();
 reordered_solution_at_temporal_quadrature_points.collect_sizes ();
 reordered_solution_time_derivative_at_temporal_quadrature_points.collect_sizes ();
 
+// Interpolate all current vectors to the union mesh
+
 Vector<double> solution_union (no_of_union_dofs);
 Vector<double> old_solution_union (no_of_union_dofs);
 Vector<double> solution_plus_union (no_of_union_space_dofs);
@@ -1320,6 +1347,8 @@ VectorTools::interpolate_to_different_mesh (dof_handler, solution, dof_handler_u
 VectorTools::interpolate_to_different_mesh (old_dof_handler, old_solution, dof_handler_union, union_constraints, old_solution_union);
 
 switch(time_degree) {case 0: solution_plus_union = solution_union; break; default: reorder_solution_vector (solution_union, reordered_solution_union, dof_handler_space_union, dof_handler_union, fe_union); solution_plus_union = reordered_solution_union.block(time_degree);}
+
+// At each temporal quadrature point, compute the spatial finite element coefficients which define the spacetime function and it's temporal derivative at that point
 
 if (time_degree > 0)
 {
@@ -1336,7 +1365,7 @@ typename DoFHandler<dim>::active_cell_iterator union_cell = dof_handler_union.be
 typename DoFHandler<dim>::active_cell_iterator union_space_cell = dof_handler_space_union.begin_active ();
 
 double h = 0; double h_min = GridTools::minimal_cell_diameter (union_triangulation); double ell_h = log(2 + 1/h_min); double C_cell = 0; double C_edge = 0;
-etaS = 0; double space_estimator_jump_value = 0; double nonlinearity_value = 0;
+etaS = 0; double space_estimator_jump_value = 0; double jump_value = 0; double nonlinearity_value = 0;
 if (output_refinement_vector == true) {refinement_vector = 0;}
 
     for (; union_cell != final_cell; ++union_cell, ++union_space_cell)
@@ -1426,26 +1455,29 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 
         temporal_mass_matrix_inv.vmult (L2_projection_f, L2_projection_rhs);
         fe_values_time.get_function_values (L2_projection_f, L2_projection_f_values);
-        fe_values_time.get_function_gradients (L2_projection_f, L2_projection_f_time_derivative_values);
+        if (time_degree > 0) {fe_values_time.get_function_gradients (L2_projection_f, L2_projection_f_time_derivative_values);}
         }
 
+        if (time_degree > 1)
+        {
         solution_second_time_derivative_values = 0;
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
    	            for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 {
-                const unsigned int comp_s_i = fe_union.system_to_component_index(i).second;
-                const unsigned int comp_t_i = fe_union.system_to_component_index(i).first;
+                const unsigned int comp_s_i = fe_union.system_to_component_index(i).second; const unsigned int comp_t_i = fe_union.system_to_component_index(i).first;
 
    	            solution_second_time_derivative_values(q_time) += solution_union(local_dof_indices[i])*fe_values_space_union.shape_value(comp_s_i, q_space)*fe_values_time.shape_hessian(comp_t_i, q_time)[0][0];
 		        }
+        }
 
-        space_estimator_jump_value += L2_projection_f_values[0] - solution_time_derivative_values(q_space) - (1/dt)*Q_derivative_values(0)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space)) + solution_laplacian_values(q_space);
+        jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
+        space_estimator_jump_value += L2_projection_f_values[0] - solution_time_derivative_values(q_space) - (1/dt)*Q_derivative_values(0)*jump_value + solution_laplacian_values(q_space);
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
 	        {
-	        estimator_values(q_time) = fmax(estimator_values(q_time), fabs(L2_projection_f_values[q_time] - solution_time_derivative_values(q_space + q_time*no_q_space) - (1/dt)*Q_derivative_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space)) + solution_laplacian_values(q_space + q_time*no_q_space) + Q_values(q_time)*space_estimator_jump_value)); 
-	        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(L2_projection_f_time_derivative_values[q_time][0] - solution_second_time_derivative_values(q_time) - (1/dt)*(1/dt)*Q_second_derivative_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space)) + solution_time_derivative_laplacian_values(q_space + q_time*no_q_space) + (1/dt)*Q_derivative_values(q_time)*space_estimator_jump_value));
+	        estimator_values(q_time) = fmax(estimator_values(q_time), fabs(L2_projection_f_values[q_time] - solution_time_derivative_values(q_space + q_time*no_q_space) - (1/dt)*Q_derivative_values(q_time)*jump_value + solution_laplacian_values(q_space + q_time*no_q_space) + Q_values(q_time)*space_estimator_jump_value)); 
+	        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(L2_projection_f_time_derivative_values[q_time][0] - solution_second_time_derivative_values(q_time) - (1/dt)*(1/dt)*Q_second_derivative_values(q_time)*jump_value + solution_time_derivative_laplacian_values(q_space + q_time*no_q_space) + (1/dt)*Q_derivative_values(q_time)*space_estimator_jump_value));
 	        }
         }
 
@@ -1925,7 +1957,7 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; doubl
     }
 }
 
-   // Integrate the Linfty norm of the temporal residual at the temporal quadrature points to get the time estimator
+    // Integrate the Linfty norm of the temporal residual at the temporal quadrature points to get the time estimator
 
     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
     {
@@ -2082,7 +2114,7 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
 
     if (etaT > temporal_refinement_threshold)
     {
-    dt = 0.5*dt; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.clear(); old_triangulation_time.copy_triangulation (triangulation_time);
+    dt = 0.5*dt; dt_old = dt; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.clear(); old_triangulation_time.copy_triangulation (triangulation_time);
     mesh_change = true;
     }
     }
