@@ -119,8 +119,8 @@ private:
 	void reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, const DoFHandler<dim> &dof_handler_space, const DoFHandler<dim> &dof_handler, const FESystem<dim> &fe) const; // Helper function which reorders the spacetime FEM vector into a blockvector with each block representing a temporal node
 	void extend_to_constant_in_time_function (Vector<double> &fe_function, Vector<double> &spacetime_fe_function) const; // Helper function which takes a spatial FEM function and expands it to a constant-in-time spacetime FEM function
 	void compute_Q_values (const unsigned int &degree, const double &point, double &Q_value, double &Q_derivative_value, double &Q_second_derivative_value) const; // Compute the "Q" values and their various derivatives from the temporal reconstruction needed for the space and time estimators
-	void compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const bool &output_refinement_vector);
-	void compute_time_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time);
+	void compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const bool &output_refinement_vector); // Computes the space estimator. Optional argument specifies whether we ouptut the refinement vector needed for spatial mesh refinement
+	void compute_time_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time); // Computes the time estimator
 	void compute_estimator (); // Solves the delta equation to determine if the estimator can be computed and, if it can be, computes it and outputs it along with other values of interest
 
 	Triangulation<dim> triangulation_space; Triangulation<dim> old_triangulation_space; Triangulation<dim> old_old_triangulation_space; // The current mesh, the mesh from the previous timestep and the mesh from the previous previous timestep
@@ -469,16 +469,16 @@ const unsigned int no_q_space = quadrature_formula_space.size();
 const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
 FullMatrix<double> local_system_matrix (dofs_per_cell, dofs_per_cell);
-std::vector<double> old_solution_plus_values (no_q_space);
 Vector<double> solution_values (no_q_space*no_q_time);
 Vector<double> nonlinearity_values (no_q_space*no_q_time);
 Vector<double> residual_vector (dof_handler.n_dofs());
 Vector<double> local_right_hand_side (dofs_per_cell);
+std::vector<double> old_solution_plus_values (no_q_space);
 std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
 Functions::FEFieldFunction<dim> old_solution_plus_function (old_dof_handler_space, old_solution_plus);
 
-if (mesh_change == false) // Extend the numerical solution at final time on the previous interval to a constant-in-time function for use as an initial guess in the Picard iteration
+if (mesh_change == false) // Extend the numerical solution at final time on the previous interval to a constant-in-time function for use as an initial guess in the Newton iteration
 {
 switch (time_degree)
 {
@@ -608,7 +608,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
     constraints.distribute (solution);
 
     // Compute the residual
-    residual_vector.add (-1,solution);
+    residual_vector.add (-1, solution);
     residual = residual_vector.l2_norm ();
 
     if (residual < max*rel_tol) {break;} // Terminate the Newton iteration when the difference in solutions is sufficiently small
@@ -841,9 +841,14 @@ default: double value = 0; double old_value = point; double old_old_value = 1.0;
 Q_value *= 0.5*std::pow(-1, degree); Q_derivative_value *= std::pow(-1, degree); Q_second_derivative_value *= 2*std::pow(-1, degree);
 }
 
+// Computes the space estimator. Optional argument specifies whether we ouptut the refinement vector needed for spatial mesh refinement
+// For efficiency is decomposed into two possibilities
+// If mesh_change == false and old_mesh_change == false, all meshes are the same and so we just compute on the current grid
+// If either mesh_change == true or old_mesh_change == true, some meshes are different so we must form the UNION MESH then interpolate all vectors to it and work over this grid
+
 template <int dim> void dGcGblowup<dim>::compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const bool &output_refinement_vector)
 {
-const QGaussLobatto<dim> quadrature_formula_space (no_q_space_x); const QGaussLobatto<dim-1> quadrature_formula_space_face (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
+const QGauss<dim> quadrature_formula_space (no_q_space_x); const QGauss<dim-1> quadrature_formula_space_face (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
 
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_hessians | update_quadrature_points | update_JxW_values);
 FEValues<1> old_fe_values_time (old_fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
@@ -1641,9 +1646,14 @@ auto cell_pair = cell_list.begin(); auto final_cell_pair = cell_list.end();
 }
 }
 
+// Computes the time estimator
+// For efficiency is decomposed into two possibilities
+// If mesh_change == false and old_mesh_change == false, all meshes are the same and so we just compute on the current grid
+// If either mesh_change == true or old_mesh_change == true, some meshes are different so we must form the UNION MESH then interpolate all vectors to it and work over this grid
+
 template <int dim> void dGcGblowup<dim>::compute_time_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time)
 {
-const QGaussLobatto<dim> quadrature_formula_space (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
+const QGauss<dim> quadrature_formula_space (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
 
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_quadrature_points | update_JxW_values);
 FEValues<1> old_fe_values_time (old_fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
@@ -1654,7 +1664,7 @@ const unsigned int dofs_per_cell = fe.dofs_per_cell;
 FullMatrix<double> temporal_mass_matrix_inv (time_degree + 1, time_degree + 1);
 FullMatrix<double> old_temporal_mass_matrix_inv (time_degree + 1, time_degree + 1);
 
-Vector<double> estimator_values (no_q_time);
+Vector<double> estimator_values (no_q_time); // Holds the Linfty norm of the temporal residual at each temporal quadrature point
 Vector<double> solution_values (no_q_space*no_q_time);
 Vector<double> old_solution_values (no_q_space*no_q_time);
 Vector<double> Q_values (no_q_time);
@@ -1681,14 +1691,16 @@ fe_values_time.reinit (time_cell); old_fe_values_time.reinit (old_time_cell);
     compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values(q_time), Q_derivative_values(q_time), etaT);
     }
 
-if (mesh_change == false && old_mesh_change == false)
+if (mesh_change == false && old_mesh_change == false) // If mesh_change == false and old_mesh_change == false, all meshes are the same and so we just compute on the current grid
 {
 FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values | update_quadrature_points);
 
 typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (), final_cell = dof_handler.end ();
 typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active ();
 
-etaT = 0; double discrete_laplacian_jump_value = 0; double nonlinearity_value = 0; double solution_time_derivative_value = 0;
+etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; double nonlinearity_value = 0; double solution_time_derivative_value = 0; 
+
+    // Loop over all cells, compute the Linfty norm of the temporal residual of the solution at each temporal quadrature point and store it in estimator_values
 
     for (; cell != final_cell; ++cell, ++space_cell)
     {
@@ -1762,17 +1774,21 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double nonlinearity_value = 
             }
         }
 
-        discrete_laplacian_jump_value += L2_projection_f_values[0] - solution_time_derivative_value - (1/dt)*Q_derivative_values(0)*(solution_values(q_space) - old_solution_values(q_space+(no_q_time-1)*no_q_space));
+        jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
+        discrete_laplacian_jump_value += L2_projection_f_values[0] - solution_time_derivative_value - (1/dt)*Q_derivative_values(0)*jump_value;
 
 	        for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
             {
-            estimator_values(q_time) = fmax(estimator_values(q_time), fabs((solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space)))*(solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space))) - L2_projection_f_values[q_time] - Q_values(q_time)*discrete_laplacian_jump_value));
+            double f_reconstructed = solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*jump_value; f_reconstructed *= f_reconstructed;
+            estimator_values(q_time) = fmax(estimator_values(q_time), fabs(f_reconstructed - L2_projection_f_values[q_time] - Q_values(q_time)*discrete_laplacian_jump_value));
             }
         }
     }
 }
-else
+else // If either mesh_change == true or old_mesh_change == true, some meshes are different so we must form the UNION MESH then interpolate all vectors to it and work over this grid
 {
+// Form the union mesh
+
 Triangulation<dim> union_triangulation;
 
 if (mesh_change == true && old_mesh_change == false)
@@ -1789,6 +1805,8 @@ Triangulation<dim> intermediate_triangulation;
 GridGenerator::create_union_triangulation (old_old_triangulation_space, old_triangulation_space, intermediate_triangulation);
 GridGenerator::create_union_triangulation (triangulation_space, intermediate_triangulation, union_triangulation);
 }
+
+// Create relevant union mesh dof_handler and fe objects
 
 DoFHandler<dim> dof_handler_space_union (union_triangulation); FE_Q<dim> fe_space_union (space_degree); dof_handler_space_union.distribute_dofs (fe_space_union);
 DoFHandler<dim> dof_handler_union (union_triangulation); FESystem<dim> fe_union (fe_space_union, time_degree + 1); dof_handler_union.distribute_dofs (fe_union);
@@ -1810,6 +1828,8 @@ DoFTools::make_hanging_node_constraints (dof_handler_union, union_constraints);
 DoFTools::make_zero_boundary_constraints (dof_handler_union, union_constraints);
 union_constraints.close ();
 
+// Interpolate all current vectors to the union mesh
+
 Vector<double> solution_union (no_of_union_dofs);
 Vector<double> old_solution_union (no_of_union_dofs);
 Vector<double> solution_plus_union (no_of_union_space_dofs);
@@ -1825,7 +1845,9 @@ VectorTools::interpolate_to_different_mesh (old_dof_handler, old_solution, dof_h
 typename DoFHandler<dim>::active_cell_iterator union_cell = dof_handler_union.begin_active (), final_cell = dof_handler_union.end ();
 typename DoFHandler<dim>::active_cell_iterator union_space_cell = dof_handler_space_union.begin_active ();
 
-etaT = 0; double discrete_laplacian_jump_value = 0; double nonlinearity_value = 0; double solution_time_derivative_value = 0;
+etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; double nonlinearity_value = 0; double solution_time_derivative_value = 0;
+
+    // Loop over all cells, compute the Linfty norm of the temporal residual of the solution at each temporal quadrature point and store it in estimator_values
 
     for (; union_cell != final_cell; ++union_cell, ++union_space_cell)
     {
@@ -1891,15 +1913,19 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double nonlinearity_value = 
             }
         }
 
-        discrete_laplacian_jump_value += L2_projection_f_values[0] - solution_time_derivative_value - (1/dt)*Q_derivative_values(0)*(solution_values(q_space) - old_solution_values(q_space+(no_q_time-1)*no_q_space));
+        jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
+        discrete_laplacian_jump_value += L2_projection_f_values[0] - solution_time_derivative_value - (1/dt)*Q_derivative_values(0)*jump_value;
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
             {
-            estimator_values(q_time) = fmax(estimator_values(q_time), fabs((solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space)))*(solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*(solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space))) - L2_projection_f_values[q_time] - Q_values(q_time)*discrete_laplacian_jump_value));
+            double f_reconstructed = solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*jump_value; f_reconstructed *= f_reconstructed;
+            estimator_values(q_time) = fmax(estimator_values(q_time), fabs(f_reconstructed - L2_projection_f_values[q_time] - Q_values(q_time)*discrete_laplacian_jump_value));
             }
         }
     }
 }
+
+   // Integrate the Linfty norm of the temporal residual at the temporal quadrature points to get the time estimator
 
     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
     {
@@ -2046,8 +2072,8 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
     energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
     output_solution ();
     assemble_and_solve (int((3*space_degree + 3)/2), int((3*time_degree + 3)/2), 100, 1e-13); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int((3*space_degree + 5)/2), int((3*time_degree + 5)/2), true); // Compute the space estimator
-    compute_time_estimator (int((3*space_degree + 5)/2), int((3*time_degree + 5)/2)); // Compute the time estimator
+    compute_space_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2), true); // Compute the space estimator
+    compute_time_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2)); // Compute the time estimator
 
     deallog << "Space Estimator: " << etaS << std::endl; // Output the value of the time estimator
     deallog << "Time Estimator: " << etaT << std::endl; // Output the value of the time estimator
@@ -2064,8 +2090,8 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
     else
     {
     assemble_and_solve (int((3*space_degree + 3)/2), int((3*time_degree + 3)/2), 100, 1e-13); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int((3*space_degree + 5)/2), int((3*time_degree + 5)/2), true); // Compute the space estimator
-    compute_time_estimator (int((3*space_degree + 5)/2), int((3*time_degree + 5)/2)); // Compute the time estimator
+    compute_space_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2), true); // Compute the space estimator
+    compute_time_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2)); // Compute the time estimator
 
     refine_mesh ();
 
@@ -2083,8 +2109,8 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
 
     setup_system_partial ();
     assemble_and_solve (int((3*space_degree + 3)/2), int((3*time_degree + 3)/2), 100, 1e-13); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int((3*space_degree + 5)/2), int((3*time_degree + 5)/2), false); // Compute the space estimator
-    compute_time_estimator (int((3*space_degree + 5)/2), int((3*time_degree + 5)/2)); // Compute the time estimator
+    compute_space_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2), false); // Compute the space estimator
+    compute_time_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2)); // Compute the time estimator
     }
 
     }
