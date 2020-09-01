@@ -96,7 +96,7 @@ public:
     double spatial_refinement_threshold = 1; // The spatial refinement threshold
     double spatial_coarsening_threshold = 0.1*std::pow(2.0, -1.0*space_degree)*spatial_refinement_threshold; // The spatial coarsening threshold
 	double temporal_refinement_threshold = 1e-3; // The temporal refinement threshold
-	double delta_residual_threshold = 1e-04; // The threshold for the delta equation residual above which we consider the delta equation as having no root
+	double delta_residual_threshold = 1e-4; // The threshold for the delta equation residual above which we consider the delta equation as having no root
 
     // Mesh change parameters
     bool mesh_change = true; // Parameter indicating if mesh change recently occured between triangulation_space and old_triangulation_space
@@ -1481,6 +1481,8 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 	        }
         }
 
+        // Multiply the cell residuals by C_cell and place them into the block vectors
+
         for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
         {
         space_estimator_values.block(q_time)(cell_no) = C_cell*estimator_values(q_time);
@@ -1489,9 +1491,16 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 
     estimator_values = 0; derivative_estimator_values = 0;
 
+    // Loop over all faces and compute the edge residual contribution to the space and space derivative estimators
+    // We must subdivide this into four cases:
+    // If the face is on the boundary, we do nothing
+    // If both faces are the same size, we simply compute with matching values
+    // If the neighbor face is coarser, for the neighbor face we must compute by restricting the values to the current face
+    // If the neighbor face is more refined, we must loop over all subfaces and restrict the values on the current face to the subfaces
+
         for (unsigned int face = 0; face < 4; ++face)
         {
-        if (union_space_cell->face(face)->at_boundary() == false && union_space_cell->face(face)->has_children() == false && union_space_cell->neighbor_is_coarser(face) == false)
+        if (union_space_cell->face(face)->at_boundary() == false && union_space_cell->face(face)->has_children() == false && union_space_cell->neighbor_is_coarser(face) == false) // Both faces are the same size
         {
 		typename DoFHandler<dim>::active_cell_iterator union_space_cell_neighbor = union_space_cell->neighbor (face);
 		const unsigned int neighbor_face_no = union_space_cell->neighbor_face_no (face);
@@ -1532,7 +1541,7 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 			    }
             }	 
         }
-        if (union_space_cell->face(face)->at_boundary() == false && union_space_cell->face(face)->has_children() == false && union_space_cell->neighbor_is_coarser(face) == true)
+        if (union_space_cell->face(face)->at_boundary() == false && union_space_cell->face(face)->has_children() == false && union_space_cell->neighbor_is_coarser(face) == true) // The neighbor face is coarser than the current face
         {
         typename DoFHandler<dim>::active_cell_iterator union_space_cell_neighbor = union_space_cell->neighbor (face);
         std::pair<unsigned int, unsigned int> neighbor_face_no = union_space_cell->neighbor_of_coarser_neighbor (face);
@@ -1573,7 +1582,7 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 			    }
             }
         }
-        if (union_space_cell->face(face)->at_boundary() == false && union_space_cell->face(face)->has_children() == true && union_space_cell->neighbor_is_coarser(face) == false)
+        if (union_space_cell->face(face)->at_boundary() == false && union_space_cell->face(face)->has_children() == true && union_space_cell->neighbor_is_coarser(face) == false) // The neighbor face is more refined than the current face
         {
         const unsigned int no_of_subfaces = union_space_cell->face(face)->n_children();
         const unsigned int neighbor_face_no = union_space_cell->neighbor_of_neighbor (face);
@@ -1620,6 +1629,8 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
             }
         }
         }
+
+        // Multiply the edge residuals by C_edge and place them into the block vectors
 
         for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
         {
