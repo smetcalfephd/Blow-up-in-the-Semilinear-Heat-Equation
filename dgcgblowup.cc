@@ -535,7 +535,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
             {
             unsigned int comp_s_k = fe.system_to_component_index(k).second; unsigned int comp_t_k = fe.system_to_component_index(k).first;
 
-                for (unsigned int l = 0; l < dofs_per_cell; ++l)
+                for (unsigned int l = 0; l < k + 1; ++l)
                 {
                 unsigned int comp_s_l = fe.system_to_component_index(l).second; unsigned int comp_t_l = fe.system_to_component_index(l).first;
 
@@ -544,6 +544,8 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                         {
                         local_system_matrix(k,l) -= 2*solution_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_k,q_space)*fe_values_space.shape_value(comp_s_l,q_space)*fe_values_time.shape_value(comp_t_k,q_time)*fe_values_time.shape_value(comp_t_l,q_time);
                         }
+
+                local_system_matrix(l,k) = local_system_matrix(k,l);
                 }
             }
 
