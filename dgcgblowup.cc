@@ -473,6 +473,7 @@ Vector<double> solution_values (no_q_space*no_q_time);
 Vector<double> nonlinearity_values (no_q_space*no_q_time);
 Vector<double> residual_vector (dof_handler.n_dofs());
 Vector<double> local_right_hand_side (dofs_per_cell);
+std::vector<double> fe_values_spacetime (dofs_per_cell*no_q_space*no_q_time);
 std::vector<double> old_solution_plus_values (no_q_space);
 std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
@@ -529,25 +530,30 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                 solution_values(q_space + q_time*no_q_space) *= fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
                 }  
 
-            // Assemble the local contributions of the dynamic part of the system matrix
-
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
             {
             unsigned int comp_s_k = fe.system_to_component_index(k).second; unsigned int comp_t_k = fe.system_to_component_index(k).first;
 
+                for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+                    for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+                    {
+                    fe_values_spacetime[k + q_space*dofs_per_cell + q_time*dofs_per_cell*no_q_space] = fe_values_space.shape_value(comp_s_k,q_space)*fe_values_time.shape_value(comp_t_k,q_time);
+                    }
+            }
+
+            // Assemble the local contributions of the dynamic part of the system matrix
+
+            for (unsigned int k = 0; k < dofs_per_cell; ++k)
                 for (unsigned int l = 0; l < k + 1; ++l)
                 {
-                unsigned int comp_s_l = fe.system_to_component_index(l).second; unsigned int comp_t_l = fe.system_to_component_index(l).first;
-
                     for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                         for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
                         {
-                        local_system_matrix(k,l) += solution_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_k,q_space)*fe_values_space.shape_value(comp_s_l,q_space)*fe_values_time.shape_value(comp_t_k,q_time)*fe_values_time.shape_value(comp_t_l,q_time);
+                        local_system_matrix(k,l) += solution_values(q_space + q_time*no_q_space)*fe_values_spacetime[k + q_space*dofs_per_cell + q_time*dofs_per_cell*no_q_space]*fe_values_spacetime[l + q_space*dofs_per_cell + q_time*dofs_per_cell*no_q_space];
                         }
 
                 local_system_matrix(l,k) = local_system_matrix(k,l);
                 }
-            }
 
             for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                 for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
@@ -578,16 +584,12 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
         // Assemble the local contributions of the dynamic part of the right-hand side vector
 
-            for (unsigned int i = 0; i < dofs_per_cell; ++i)
-            {
-            unsigned int comp_s_i = fe.system_to_component_index(i).second; unsigned int comp_t_i = fe.system_to_component_index(i).first;
-
+            for (unsigned int k = 0; k < dofs_per_cell; ++k)
                 for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
 	                {
-	                local_right_hand_side(i) += nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_time.shape_value(comp_t_i,q_time);
+                    local_right_hand_side(k) += nonlinearity_values(q_space + q_time*no_q_space)*fe_values_spacetime[k + q_space*dofs_per_cell + q_time*dofs_per_cell*no_q_space];
  	                }
-            }
        
         local_system_matrix *= -2; local_right_hand_side *= -1;
 
