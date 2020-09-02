@@ -875,14 +875,14 @@ Vector<double> solution_laplacian_values (no_q_space*no_q_time);
 Vector<double> solution_time_derivative_values (no_q_space*no_q_time);
 Vector<double> solution_time_derivative_laplacian_values (no_q_space*no_q_time);
 Vector<double> solution_second_time_derivative_values (no_q_time);
-Vector<double> Q_values (no_q_time);
-Vector<double> Q_derivative_values (no_q_time);
-Vector<double> Q_second_derivative_values (no_q_time);
 Vector<double> L2_projection_rhs (time_degree + 1);
 Vector<double> L2_projection_f (time_degree + 1);
 std::vector<double> solution_values_temp (no_q_space);
 std::vector<double> old_old_solution_plus_values (no_q_space);
 std::vector<double> L2_projection_f_values (no_q_time);
+std::vector<double> Q_values (no_q_time);
+std::vector<double> Q_derivative_values (no_q_time);
+std::vector<double> Q_second_derivative_values (no_q_time);
 std::vector<Tensor<1,1>> L2_projection_f_time_derivative_values (no_q_time);
 std::vector<Tensor<2,dim>> solution_hessian_values (no_q_space); 
 std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
@@ -906,7 +906,7 @@ fe_values_time.reinit (time_cell); old_fe_values_time.reinit (old_time_cell);
 
     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
     {
-    compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values(q_time), Q_derivative_values(q_time), Q_second_derivative_values(q_time));
+    compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values[q_time], Q_derivative_values[q_time], Q_second_derivative_values[q_time]);
     }
 
 if (mesh_change == false && old_mesh_change == false) // If mesh_change == false and old_mesh_change == false, all meshes are the same and so we just compute on the current grid
@@ -1000,7 +1000,7 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 
         if (timestep_number > 1)
         {
-        space_estimator_jump_value = (1/dt_old)*Q_derivative_values(no_q_time - 1)*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
+        space_estimator_jump_value = (1/dt_old)*Q_derivative_values[no_q_time - 1]*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
 
         switch (time_degree) {case 0: space_estimator_jump_value -= old_solution_values(q_space)*old_solution_values(q_space); break;
         default: L2_projection_rhs = 0;
@@ -1069,12 +1069,12 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
         }
 
         jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
-        space_estimator_jump_value += L2_projection_f_values[0] - solution_time_derivative_values(q_space) - (1/dt)*Q_derivative_values(0)*jump_value + solution_laplacian_values(q_space);
+        space_estimator_jump_value += L2_projection_f_values[0] - solution_time_derivative_values(q_space) - (1/dt)*Q_derivative_values[0]*jump_value + solution_laplacian_values(q_space);
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
 	        {
-	        estimator_values(q_time) = fmax(estimator_values(q_time), fabs(L2_projection_f_values[q_time] - solution_time_derivative_values(q_space + q_time*no_q_space) - (1/dt)*Q_derivative_values(q_time)*jump_value + solution_laplacian_values(q_space + q_time*no_q_space) + Q_values(q_time)*space_estimator_jump_value)); 
-	        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(L2_projection_f_time_derivative_values[q_time][0] - solution_second_time_derivative_values(q_time) - (1/dt)*(1/dt)*Q_second_derivative_values(q_time)*jump_value + solution_time_derivative_laplacian_values(q_space + q_time*no_q_space) + (1/dt)*Q_derivative_values(q_time)*space_estimator_jump_value));
+	        estimator_values(q_time) = fmax(estimator_values(q_time), fabs(L2_projection_f_values[q_time] - solution_time_derivative_values(q_space + q_time*no_q_space) - (1/dt)*Q_derivative_values[q_time]*jump_value + solution_laplacian_values(q_space + q_time*no_q_space) + Q_values[q_time]*space_estimator_jump_value)); 
+	        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(L2_projection_f_time_derivative_values[q_time][0] - solution_second_time_derivative_values(q_time) - (1/dt)*(1/dt)*Q_second_derivative_values[q_time]*jump_value + solution_time_derivative_laplacian_values(q_space + q_time*no_q_space) + (1/dt)*Q_derivative_values[q_time]*space_estimator_jump_value));
 	        }
         }
 
@@ -1133,8 +1133,8 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 			      
 				for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
 		        {			
-		       	estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values(q_time)*jump_values(q_space)));
-			    derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values(q_time)*jump_values(q_space)));
+		       	estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values[q_time]*jump_values(q_space)));
+			    derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values[q_time]*jump_values(q_space)));
 			    }
             }	 
         }
@@ -1174,8 +1174,8 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 
                 for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
 		        {			
-		       	estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values(q_time)*jump_values(q_space)));
-			    derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values(q_time)*jump_values(q_space)));
+		       	estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values[q_time]*jump_values(q_space)));
+			    derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values[q_time]*jump_values(q_space)));
 			    }
             }
         }
@@ -1219,8 +1219,8 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 			      
 				    for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
 		            {			
-		       	    estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values(q_time)*jump_values(q_space)));
-			        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values(q_time)*jump_values(q_space)));
+		       	    estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values[q_time]*jump_values(q_space)));
+			        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values[q_time]*jump_values(q_space)));
 			        }
                 }	
             }
@@ -1244,8 +1244,8 @@ Vector<double> reconstructed_solution_at_q_time (no_of_space_dofs);
     {
     switch(time_degree)
     {
-    case 0: reconstructed_solution_at_q_time = solution; reconstructed_solution_at_q_time *= 1 + Q_values(q_time); reconstructed_solution_at_q_time.add(-Q_values(q_time), old_solution_plus); break;
-    default: reconstructed_solution_at_q_time = reordered_solution_at_temporal_quadrature_points.block(q_time); reconstructed_solution_at_q_time.add(Q_values(q_time), reordered_solution_at_temporal_quadrature_points.block(0)); reconstructed_solution_at_q_time.add(-Q_values(q_time), old_solution_plus);
+    case 0: reconstructed_solution_at_q_time = solution; reconstructed_solution_at_q_time *= 1 + Q_values[q_time]; reconstructed_solution_at_q_time.add(-Q_values[q_time], old_solution_plus); break;
+    default: reconstructed_solution_at_q_time = reordered_solution_at_temporal_quadrature_points.block(q_time); reconstructed_solution_at_q_time.add(Q_values[q_time], reordered_solution_at_temporal_quadrature_points.block(0)); reconstructed_solution_at_q_time.add(-Q_values[q_time], old_solution_plus);
     }
 
     double space_estimator_at_q_time = space_estimator_values.block(q_time).linfty_norm();
@@ -1410,7 +1410,7 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 
         for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
         {
-        space_estimator_jump_value = (1/dt_old)*Q_derivative_values(no_q_time - 1)*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
+        space_estimator_jump_value = (1/dt_old)*Q_derivative_values[no_q_time - 1]*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
 
         switch (time_degree) {case 0: space_estimator_jump_value -= old_solution_values(q_space)*old_solution_values(q_space); break;
         default: L2_projection_rhs = 0;
@@ -1474,12 +1474,12 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
         }
 
         jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
-        space_estimator_jump_value += L2_projection_f_values[0] - solution_time_derivative_values(q_space) - (1/dt)*Q_derivative_values(0)*jump_value + solution_laplacian_values(q_space);
+        space_estimator_jump_value += L2_projection_f_values[0] - solution_time_derivative_values(q_space) - (1/dt)*Q_derivative_values[0]*jump_value + solution_laplacian_values(q_space);
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
 	        {
-	        estimator_values(q_time) = fmax(estimator_values(q_time), fabs(L2_projection_f_values[q_time] - solution_time_derivative_values(q_space + q_time*no_q_space) - (1/dt)*Q_derivative_values(q_time)*jump_value + solution_laplacian_values(q_space + q_time*no_q_space) + Q_values(q_time)*space_estimator_jump_value)); 
-	        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(L2_projection_f_time_derivative_values[q_time][0] - solution_second_time_derivative_values(q_time) - (1/dt)*(1/dt)*Q_second_derivative_values(q_time)*jump_value + solution_time_derivative_laplacian_values(q_space + q_time*no_q_space) + (1/dt)*Q_derivative_values(q_time)*space_estimator_jump_value));
+	        estimator_values(q_time) = fmax(estimator_values(q_time), fabs(L2_projection_f_values[q_time] - solution_time_derivative_values(q_space + q_time*no_q_space) - (1/dt)*Q_derivative_values[q_time]*jump_value + solution_laplacian_values(q_space + q_time*no_q_space) + Q_values[q_time]*space_estimator_jump_value)); 
+	        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(L2_projection_f_time_derivative_values[q_time][0] - solution_second_time_derivative_values(q_time) - (1/dt)*(1/dt)*Q_second_derivative_values[q_time]*jump_value + solution_time_derivative_laplacian_values(q_space + q_time*no_q_space) + (1/dt)*Q_derivative_values[q_time]*space_estimator_jump_value));
 	        }
         }
 
@@ -1538,8 +1538,8 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 			      
 				for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
 		        {			
-		       	estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values(q_time)*jump_values(q_space)));
-			    derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values(q_time)*jump_values(q_space)));
+		       	estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values[q_time]*jump_values(q_space)));
+			    derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values[q_time]*jump_values(q_space)));
 			    }
             }	 
         }
@@ -1579,8 +1579,8 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 
                 for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
 		        {			
-		       	estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values(q_time)*jump_values(q_space)));
-			    derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values(q_time)*jump_values(q_space)));
+		       	estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values[q_time]*jump_values(q_space)));
+			    derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values[q_time]*jump_values(q_space)));
 			    }
             }
         }
@@ -1624,8 +1624,8 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
 			      
 				    for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
 		            {			
-		       	    estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values(q_time)*jump_values(q_space)));
-			        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values(q_time)*jump_values(q_space)));
+		       	    estimator_values(q_time) = fmax(estimator_values(q_time), fabs(solution_face_gradient_values[q_space]*normals[q_space] - solution_face_gradient_neighbor_values[q_space]*normals[q_space] + Q_values[q_time]*jump_values(q_space)));
+			        derivative_estimator_values(q_time) = fmax(derivative_estimator_values(q_time), fabs(solution_time_derivative_face_gradient_values[q_space]*normals[q_space] - solution_time_derivative_face_gradient_neighbor_values[q_space]*normals[q_space] + (1/dt)*Q_derivative_values[q_time]*jump_values(q_space)));
 			        }
                 }	
             }
@@ -1648,8 +1648,8 @@ Vector<double> refinement_union_vector (no_of_union_cells);
     {
     switch(time_degree)
     {
-    case 0: reconstructed_solution_at_q_time = solution_union; reconstructed_solution_at_q_time *= 1 + Q_values(q_time); reconstructed_solution_at_q_time.add(-Q_values(q_time), old_solution_plus_union); break;
-    default: reconstructed_solution_at_q_time = reordered_solution_at_temporal_quadrature_points.block(q_time); reconstructed_solution_at_q_time.add(Q_values(q_time), reordered_solution_at_temporal_quadrature_points.block(0)); reconstructed_solution_at_q_time.add(-Q_values(q_time), old_solution_plus_union);
+    case 0: reconstructed_solution_at_q_time = solution_union; reconstructed_solution_at_q_time *= 1 + Q_values[q_time]; reconstructed_solution_at_q_time.add(-Q_values[q_time], old_solution_plus_union); break;
+    default: reconstructed_solution_at_q_time = reordered_solution_at_temporal_quadrature_points.block(q_time); reconstructed_solution_at_q_time.add(Q_values[q_time], reordered_solution_at_temporal_quadrature_points.block(0)); reconstructed_solution_at_q_time.add(-Q_values[q_time], old_solution_plus_union);
     }
 
     double space_estimator_at_q_time = space_estimator_values.block(q_time).linfty_norm();
@@ -1712,12 +1712,12 @@ FullMatrix<double> old_temporal_mass_matrix_inv (time_degree + 1, time_degree + 
 Vector<double> estimator_values (no_q_time); // Holds the Linfty norm of the temporal residual at each temporal quadrature point
 Vector<double> solution_values (no_q_space*no_q_time);
 Vector<double> old_solution_values (no_q_space*no_q_time);
-Vector<double> Q_values (no_q_time);
-Vector<double> Q_derivative_values (no_q_time);
 Vector<double> L2_projection_rhs (time_degree + 1);
 Vector<double> L2_projection_f (time_degree + 1);
 std::vector<double> L2_projection_f_values (no_q_time);
 std::vector<double> old_old_solution_plus_values (no_q_space);
+std::vector<double> Q_values (no_q_time);
+std::vector<double> Q_derivative_values (no_q_time);
 std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
 if (time_degree > 0)
@@ -1733,7 +1733,7 @@ fe_values_time.reinit (time_cell); old_fe_values_time.reinit (old_time_cell);
 
     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
     {
-    compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values(q_time), Q_derivative_values(q_time), etaT);
+    compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values[q_time], Q_derivative_values[q_time], etaT);
     }
 
 if (mesh_change == false && old_mesh_change == false) // If mesh_change == false and old_mesh_change == false, all meshes are the same and so we just compute on the current grid
@@ -1788,7 +1788,7 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; doubl
             }
         }
 
-        discrete_laplacian_jump_value = -L2_projection_f(time_degree) + solution_time_derivative_value + (1/dt_old)*Q_derivative_values(no_q_time-1)*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
+        discrete_laplacian_jump_value = -L2_projection_f(time_degree) + solution_time_derivative_value + (1/dt_old)*Q_derivative_values[no_q_time-1]*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
         }
         else
         {
@@ -1820,12 +1820,12 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; doubl
         }
 
         jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
-        discrete_laplacian_jump_value += L2_projection_f_values[0] - solution_time_derivative_value - (1/dt)*Q_derivative_values(0)*jump_value;
+        discrete_laplacian_jump_value += L2_projection_f_values[0] - solution_time_derivative_value - (1/dt)*Q_derivative_values[0]*jump_value;
 
 	        for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
             {
-            double f_reconstructed = solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*jump_value; f_reconstructed *= f_reconstructed;
-            estimator_values(q_time) = fmax(estimator_values(q_time), fabs(f_reconstructed - L2_projection_f_values[q_time] - Q_values(q_time)*discrete_laplacian_jump_value));
+            double f_reconstructed = solution_values(q_space + q_time*no_q_space) + Q_values[q_time]*jump_value; f_reconstructed *= f_reconstructed;
+            estimator_values(q_time) = fmax(estimator_values(q_time), fabs(f_reconstructed - L2_projection_f_values[q_time] - Q_values[q_time]*discrete_laplacian_jump_value));
             }
         }
     }
@@ -1932,7 +1932,7 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; doubl
             }
         }
 
-        discrete_laplacian_jump_value = -L2_projection_f(time_degree) + solution_time_derivative_value + (1/dt_old)*Q_derivative_values(no_q_time-1)*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
+        discrete_laplacian_jump_value = -L2_projection_f(time_degree) + solution_time_derivative_value + (1/dt_old)*Q_derivative_values[no_q_time-1]*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
 
         switch (time_degree) {case 0: for (unsigned int q_time = 0; q_time < no_q_time; ++q_time) {L2_projection_f_values[q_time] = solution_values(q_space)*solution_values(q_space);} break;
         default: L2_projection_rhs = 0; solution_time_derivative_value = 0;
@@ -1959,12 +1959,12 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; doubl
         }
 
         jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
-        discrete_laplacian_jump_value += L2_projection_f_values[0] - solution_time_derivative_value - (1/dt)*Q_derivative_values(0)*jump_value;
+        discrete_laplacian_jump_value += L2_projection_f_values[0] - solution_time_derivative_value - (1/dt)*Q_derivative_values[0]*jump_value;
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
             {
-            double f_reconstructed = solution_values(q_space + q_time*no_q_space) + Q_values(q_time)*jump_value; f_reconstructed *= f_reconstructed;
-            estimator_values(q_time) = fmax(estimator_values(q_time), fabs(f_reconstructed - L2_projection_f_values[q_time] - Q_values(q_time)*discrete_laplacian_jump_value));
+            double f_reconstructed = solution_values(q_space + q_time*no_q_space) + Q_values[q_time]*jump_value; f_reconstructed *= f_reconstructed;
+            estimator_values(q_time) = fmax(estimator_values(q_time), fabs(f_reconstructed - L2_projection_f_values[q_time] - Q_values[q_time]*discrete_laplacian_jump_value));
             }
         }
     }
