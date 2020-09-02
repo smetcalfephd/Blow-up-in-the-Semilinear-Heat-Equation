@@ -640,7 +640,7 @@ deallog << "Projecting the initial condition..." << std::endl;
 
 energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), projection);
 
-VectorTools::integrate_difference (dof_handler_space, projection, initialvalues<dim>(), error, QGauss<dim>(int((3*space_degree + 3)/2)), VectorTools::Linfty_norm);
+VectorTools::integrate_difference (dof_handler_space, projection, initialvalues<dim>(), error, QGauss<dim>(int(1.5*space_degree) + 1), VectorTools::Linfty_norm);
 etaS = error.linfty_norm ();
 
 deallog << "Initial Linfty Error: " << etaS << std::endl;
@@ -2120,9 +2120,9 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
 
     energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
     output_solution ();
-    assemble_and_solve (int((3*space_degree + 3)/2), int((3*time_degree + 3)/2), 15, 1e-13); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2), true); // Compute the space estimator
-    compute_time_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2)); // Compute the time estimator
+    assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1, 15, 1e-13); // Setup and solve the system and output the numerical solution
+    compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, true); // Compute the space estimator
+    compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
 
     deallog << "Space Estimator: " << etaS << std::endl; // Output the value of the time estimator
     deallog << "Time Estimator: " << etaT << std::endl; // Output the value of the time estimator
@@ -2138,9 +2138,9 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
     }
     else
     {
-    assemble_and_solve (int((3*space_degree + 3)/2), int((3*time_degree + 3)/2), 15, 1e-13); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2), true); // Compute the space estimator
-    compute_time_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2)); // Compute the time estimator
+    assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1, 15, 1e-13); // Setup and solve the system and output the numerical solution
+    compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, true); // Compute the space estimator
+    compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
 
     refine_mesh ();
 
@@ -2157,9 +2157,9 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
     deallog << "Recomputing the solution..." << std::endl << std::endl;
 
     setup_system_partial ();
-    assemble_and_solve (int((3*space_degree + 3)/2), int((3*time_degree + 3)/2), 15, 1e-13); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2), false); // Compute the space estimator
-    compute_time_estimator (int((3*space_degree + 3)/2), int((3*time_degree + 5)/2)); // Compute the time estimator
+    assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1, 15, 1e-13); // Setup and solve the system and output the numerical solution
+    compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, false); // Compute the space estimator
+    compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
     }
 
     }
