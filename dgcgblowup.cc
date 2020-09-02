@@ -542,7 +542,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                     for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                         for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
                         {
-                        local_system_matrix(k,l) -= 2*solution_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_k,q_space)*fe_values_space.shape_value(comp_s_l,q_space)*fe_values_time.shape_value(comp_t_k,q_time)*fe_values_time.shape_value(comp_t_l,q_time);
+                        local_system_matrix(k,l) += solution_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_k,q_space)*fe_values_space.shape_value(comp_s_l,q_space)*fe_values_time.shape_value(comp_t_k,q_time)*fe_values_time.shape_value(comp_t_l,q_time);
                         }
 
                 local_system_matrix(l,k) = local_system_matrix(k,l);
@@ -585,10 +585,12 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                 for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
 	                {
-	                local_right_hand_side(i) -= nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_time.shape_value(comp_t_i,q_time);
+	                local_right_hand_side(i) += nonlinearity_values(q_space + q_time*no_q_space)*fe_values_space.shape_value(comp_s_i,q_space)*fe_values_time.shape_value(comp_t_i,q_time);
  	                }
             }
        
+        local_system_matrix *= -2; local_right_hand_side *= -1;
+
         // Distribute the local contributions of the dynamic parts of the system matrix and right-hand side vector to the global system matrix and global right-hand side vector
         constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix);
         constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, right_hand_side);
