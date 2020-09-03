@@ -98,6 +98,11 @@ public:
 	double temporal_refinement_threshold = 1e-3; // The temporal refinement threshold
 	double delta_residual_threshold = 1e-4; // The threshold for the delta equation residual above which we consider the delta equation as having no root
 
+    // Nonlinear solver parameters
+    const std::string nonlinear_solver = "picard"; // Choose whether the nonlinear solver uses the "picard" or "newton" method
+    const unsigned int maximum_nonlinear_iterates = 25; // Maximum number of iterates the nonlinear solver will do before terminating
+    const double nonlinear_residual_threshold = 1e-13; // The nonlinear solver will continue to iterate until the difference in solutions is less than ||U||*nonlinear_residual_threshold
+
     // Mesh change parameters
     bool mesh_change = true; // Parameter indicating if mesh change recently occured between triangulation_space and old_triangulation_space
     bool old_mesh_change = false; // Parameter indicating if mesh change recently occured between old_triangulation_space and old_old_triangulation_space
@@ -106,11 +111,11 @@ private:
 
     void setup_system_full (); // Initialises all vectors, distributes all degrees of freedom and computes the static part of the system matrix
 	void setup_system_partial (); // Reinitialises vectors and redistributes degrees of freedom related to the current triangulation. Also recomputes the static part of the system matrix. Required if the mesh or time step length changes
-	void create_static_system_matrix (); // Creates the static part of the system matrix, i.e., that which does not change between Newton iterations
+	void create_static_system_matrix (); // Creates the static part of the system matrix, i.e., that which does not change between nonlinear iterations
     void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &temporal_mass_matrix) const; // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
 	void create_time_derivative_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &time_derivative_matrix) const; // Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
     void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const; // Computes the "energy projection" of the initial condition u_0 to the finite element function U_0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
-	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol); // Assembles the right-hand side vector and solves the nonlinear system via Newton iterates until the difference in solutions is below ||U||*rel_tol
+	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol); // Assembles the right-hand side vector and solves the nonlinear system via iteration until the difference in solutions is below ||U||*rel_tol
     void refine_initial_mesh (); // Refines the initial mesh and recomputes the energy projection of the initial condition until ||u_0 - U_0|| < spatial_coarsening_threshold
     void refine_mesh (); // Refines all cells with refinement_vector(cell_no) > spatial_refinement_threshold and coarsens all cells with refinement_vector(cell_no) < spatial_coarsening_threshold
     void prepare_for_next_time_step (); // Prepares the vectors, triangulations and dof_handlers for the next time step by setting them to previous values
@@ -252,11 +257,12 @@ refinement_vector.reinit (no_of_cells);
 create_static_system_matrix ();
 }
 
-// Creates the static part of the system matrix, i.e., that which does not change between Newton iterations
+// Creates the static part of the system matrix, i.e., that which does not change between nonlinear iterations
 
 template <int dim> void dGcGblowup<dim>::create_static_system_matrix ()
 {
-static_system_matrix.reinit (sparsity_pattern);
+if (nonlinear_solver == "newton") {static_system_matrix.reinit (sparsity_pattern);}
+if (nonlinear_solver == "picard") {system_matrix.reinit (sparsity_pattern);}
 
 const QGauss<dim> quadrature_formula_space (space_degree + 1);
 
@@ -324,9 +330,13 @@ double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0;
         }
     }
 
-    constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, static_system_matrix);
+    if (nonlinear_solver == "newton") {constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, static_system_matrix);}
+    if (nonlinear_solver == "picard") {constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix);}
+
     previous_cell_size = cell_size; 
     }
+
+if (nonlinear_solver == "picard") {preconditioner.initialize (system_matrix);}
 }
 
 // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
@@ -454,11 +464,12 @@ solver.solve (laplace_matrix, projection, right_hand_side, preconditioner);
 spatial_constraints.distribute (projection);
 }
 
-// Assembles the right-hand side vector and solves the nonlinear system via Newton iterates until the difference in solutions is below ||U||*rel_tol
+// Assembles the right-hand side vector and solves the nonlinear system via iteration until the difference in solutions is below ||U||*rel_tol
 
 template <int dim> void dGcGblowup<dim>::assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol)
 {
-deallog << "Calculating the numerical solution via Newton iteration..." << std::endl;
+if (nonlinear_solver == "newton") {deallog << "Calculating the numerical solution via Newton iteration..." << std::endl;}
+if (nonlinear_solver == "picard") {deallog << "Calculating the numerical solution via Picard iteration..." << std::endl;}
 
 const QGauss<dim> quadrature_formula_space (no_q_space_x); const QGauss<1> quadrature_formula_time (no_q_time);
 
@@ -479,7 +490,7 @@ std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
 Functions::FEFieldFunction<dim> old_solution_plus_function (old_dof_handler_space, old_solution_plus);
 
-if (mesh_change == false) // Extend the numerical solution at final time on the previous interval to a constant-in-time function for use as an initial guess in the Newton iteration
+if (mesh_change == false) // Extend the numerical solution at final time on the previous interval to a constant-in-time function for use as an initial guess in the nonlinear iteration
 {
 switch (time_degree)
 {
@@ -504,7 +515,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
     for (; iteration_number < max_iterations; ++iteration_number)
     {
-    system_matrix.reinit (sparsity_pattern); system_matrix.add (1, static_system_matrix); // Set the system matrix to the static part of the system matrix
+    if (nonlinear_solver == "newton") {system_matrix.reinit (sparsity_pattern); system_matrix.add (1, static_system_matrix);} // Set the system matrix to the static part of the system matrix if using Newton iteration
 
     typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active ();
     typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (), final_cell = dof_handler.end ();
@@ -541,8 +552,10 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                     }
             }
 
-            // Assemble the local contributions of the dynamic part of the system matrix
+        // Assemble the local contributions of the dynamic part of the system matrix if using Newton iteration
 
+        if (nonlinear_solver == "newton")
+        {
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
                 for (unsigned int l = 0; l < k + 1; ++l)
                 {
@@ -554,6 +567,12 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
                 local_system_matrix(l,k) = local_system_matrix(k,l);
                 }
+        
+        local_system_matrix *= -2;
+
+        // Distribute the local contributions of the dynamic part of the system matrix to the global system matrix if using Newton iteration
+        constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix);
+        }
 
             for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                 for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
@@ -561,7 +580,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                 nonlinearity_values(q_space + q_time*no_q_space) *= solution_values(q_space + q_time*no_q_space);
                 } 
        
-        // If on the first Newton iteration, assemble the local contributions of the static right-hand side vector and place them in the global static right-hand side vector
+        // If on the first nonlinear iteration, assemble the local contributions of the static right-hand side vector and place them in the global static right-hand side vector
 
         if (iteration_number == 1)
         {
@@ -591,10 +610,9 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                     local_right_hand_side(k) += nonlinearity_values(q_space + q_time*no_q_space)*fe_values_spacetime[k + q_space*dofs_per_cell + q_time*dofs_per_cell*no_q_space];
  	                }
        
-        local_system_matrix *= -2; local_right_hand_side *= -1;
+        if (nonlinear_solver == "newton") {local_right_hand_side *= -1;}
 
-        // Distribute the local contributions of the dynamic parts of the system matrix and right-hand side vector to the global system matrix and global right-hand side vector
-        constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix);
+        // Distribute the local contributions of the dynamic parts of the right-hand side vector to the global right-hand side vector
         constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, right_hand_side);
         } 
 
@@ -607,7 +625,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
     SolverControl solver_control (10000, 0.001*max*rel_tol, false, false);
     SolverBicgstab<> solver (solver_control, data);
 
-    preconditioner.initialize (system_matrix);
+    if (nonlinear_solver == "newton") {preconditioner.initialize (system_matrix);}
 
     solver.solve (system_matrix, solution, right_hand_side, preconditioner);
 
@@ -617,7 +635,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
     residual_vector.add (-1, solution);
     residual = residual_vector.linfty_norm ();
 
-    if (residual < max*rel_tol) {break;} // Terminate the Newton iteration when the difference in solutions is sufficiently small
+    if (residual < max*rel_tol) {break;} // Terminate the nonlinear iteration when the difference in solutions is sufficiently small
     }
 
 switch(time_degree) {case 0: solution_plus = solution; break; default: reorder_solution_vector (solution, reordered_solution, dof_handler_space, dof_handler, fe); solution_plus = reordered_solution.block(time_degree);}
@@ -2120,7 +2138,7 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
 
     energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
     output_solution ();
-    assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1, 15, 1e-13); // Setup and solve the system and output the numerical solution
+    assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1, maximum_nonlinear_iterates, nonlinear_residual_threshold); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, true); // Compute the space estimator
     compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
 
@@ -2138,7 +2156,7 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
     }
     else
     {
-    assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1, 15, 1e-13); // Setup and solve the system and output the numerical solution
+    assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1, maximum_nonlinear_iterates, nonlinear_residual_threshold); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, true); // Compute the space estimator
     compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
 
@@ -2157,7 +2175,7 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
     deallog << "Recomputing the solution..." << std::endl << std::endl;
 
     setup_system_partial ();
-    assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1, 15, 1e-13); // Setup and solve the system and output the numerical solution
+    assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1, maximum_nonlinear_iterates, nonlinear_residual_threshold); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, false); // Compute the space estimator
     compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
     }
