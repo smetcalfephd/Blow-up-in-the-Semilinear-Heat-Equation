@@ -415,49 +415,51 @@ std::vector<types::global_dof_index> local_dof_indices_space (dofs_per_cell_spac
 
 typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active (), final_space_cell = dof_handler_space.end ();
 
+double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0;
+
     for (; space_cell != final_space_cell; ++space_cell)
     {
-    local_laplace_matrix = 0; local_right_hand_side = 0;
     fe_values_space.reinit (space_cell);
     space_cell->get_dof_indices (local_dof_indices_space);
+    cell_size = space_cell->measure ();
+
+    cell_size_check = fabs(cell_size - previous_cell_size);
 
     laplacian_function.value_list (fe_values_space.get_quadrature_points(), laplacian_values);
 
+    if (cell_size_check > 1e-15)
+    {
+    local_laplace_matrix = 0;
+
         for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
-        {
             for (unsigned int j = 0; j < i + 1; ++j)
             {
                 for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                 {
                 local_laplace_matrix(i,j) += fe_values_space.shape_grad(i,q_space)*fe_values_space.shape_grad(j,q_space)*fe_values_space.JxW(q_space);
                 }
-             
+
             local_laplace_matrix(j,i) = local_laplace_matrix(i,j);
             }
+    }
 
+    local_right_hand_side = 0;
+
+        for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
             for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
             {
             local_right_hand_side(i) -= laplacian_values[q_space]*fe_values_space.shape_value(i,q_space)*fe_values_space.JxW(q_space);
             }
-        }
 
-        for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
-        {
-            for (unsigned int j = 0; j < dofs_per_cell_space; ++j)
-            {
-            laplace_matrix (local_dof_indices_space[i], local_dof_indices_space[j]) += local_laplace_matrix(i,j);
-            }
+    spatial_constraints.distribute_local_to_global (local_laplace_matrix, local_right_hand_side, local_dof_indices_space, laplace_matrix, right_hand_side);
 
-        right_hand_side (local_dof_indices_space[i]) += local_right_hand_side(i);    
-        }
+    previous_cell_size = cell_size;
     }
 
 SolverBicgstab<>::AdditionalData data; data.exact_residual = false;
 
 SolverControl solver_control (10000, 1e-20, false, false);
 SolverBicgstab<> solver (solver_control, data);
-
-spatial_constraints.condense (laplace_matrix, right_hand_side);
 
 SparseILU<double> preconditioner; preconditioner.initialize (laplace_matrix);
 solver.solve (laplace_matrix, projection, right_hand_side, preconditioner);
