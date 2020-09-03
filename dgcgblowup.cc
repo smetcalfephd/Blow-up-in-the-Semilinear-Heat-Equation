@@ -526,7 +526,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
     residual_vector = solution;
 
-    right_hand_side = 0;
+    double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0; right_hand_side = 0;
     
         for (; cell != final_cell; ++cell, ++space_cell)
         {
@@ -534,7 +534,10 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
         fe_values_space.reinit (space_cell);
 
         cell->get_dof_indices (local_dof_indices);
+        cell_size = space_cell->measure ();
 
+        cell_size_check = fabs(cell_size - previous_cell_size);
+ 
         if (iteration_number == 1) {old_solution_plus_function.value_list (fe_values_space.get_quadrature_points(), old_solution_plus_values);}
         get_spacetime_function_values (solution, fe_values_space, fe_values_time, local_dof_indices, solution_values); 
         nonlinearity_values = solution_values;
@@ -544,7 +547,9 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                 {
                 solution_values(q_space + q_time*no_q_space) *= fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
                 }  
-
+        
+        if (cell_size_check > 1e-15)
+        {
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
             {
             unsigned int comp_s_k = fe.system_to_component_index(k).second; unsigned int comp_t_k = fe.system_to_component_index(k).first;
@@ -555,6 +560,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                     fe_values_spacetime[k + q_space*dofs_per_cell + q_time*dofs_per_cell*no_q_space] = fe_values_space.shape_value(comp_s_k,q_space)*fe_values_time.shape_value(comp_t_k,q_time);
                     }
             }
+        }
 
         // Assemble the local contributions of the dynamic part of the system matrix if using Newton iteration
 
@@ -618,6 +624,8 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
         // Distribute the local contributions of the dynamic parts of the right-hand side vector to the global right-hand side vector
         constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, right_hand_side);
+
+        previous_cell_size = cell_size;
         } 
 
     right_hand_side.add (1, static_right_hand_side); // Add the static right-hand side vector to the right-hand side vector
