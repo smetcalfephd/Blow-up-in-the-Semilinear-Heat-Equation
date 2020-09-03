@@ -100,7 +100,7 @@ public:
 
     // Nonlinear solver parameters
     const std::string nonlinear_solver = "hybrid"; // Choose whether the nonlinear solver uses the "picard", "newton" or "hybrid" method
-    const unsigned int newton_every_x_steps = 5; // If using the hybrid method, uses a Newton iteration every x iterations
+    const unsigned int newton_every_x_steps = 5; // If using the hybrid method, does a Newton step every x iterations
     const unsigned int maximum_nonlinear_iterates = 25; // Maximum number of iterates the nonlinear solver will do before terminating
     const double nonlinear_residual_threshold = 1e-13; // The nonlinear solver will continue to iterate until the difference in solutions is less than ||U||*nonlinear_residual_threshold
 
