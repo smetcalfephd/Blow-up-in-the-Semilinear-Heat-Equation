@@ -99,7 +99,8 @@ public:
 	double delta_residual_threshold = 1e-4; // The threshold for the delta equation residual above which we consider the delta equation as having no root
 
     // Nonlinear solver parameters
-    const std::string nonlinear_solver = "picard"; // Choose whether the nonlinear solver uses the "picard" or "newton" method
+    const std::string nonlinear_solver = "hybrid"; // Choose whether the nonlinear solver uses the "picard", "newton" or "hybrid" method
+    const unsigned int newton_every_x_steps = 5; // If using the hybrid method, uses a Newton iteration every x iterations
     const unsigned int maximum_nonlinear_iterates = 25; // Maximum number of iterates the nonlinear solver will do before terminating
     const double nonlinear_residual_threshold = 1e-13; // The nonlinear solver will continue to iterate until the difference in solutions is less than ||U||*nonlinear_residual_threshold
 
@@ -261,7 +262,7 @@ create_static_system_matrix ();
 
 template <int dim> void dGcGblowup<dim>::create_static_system_matrix ()
 {
-if (nonlinear_solver == "newton") {static_system_matrix.reinit (sparsity_pattern);}
+if (nonlinear_solver != "picard") {static_system_matrix.reinit (sparsity_pattern);}
 if (nonlinear_solver == "picard") {system_matrix.reinit (sparsity_pattern);}
 
 const QGauss<dim> quadrature_formula_space (space_degree + 1);
@@ -330,7 +331,7 @@ double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0;
         }
     }
 
-    if (nonlinear_solver == "newton") {constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, static_system_matrix);}
+    if (nonlinear_solver != "picard") {constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, static_system_matrix);}
     if (nonlinear_solver == "picard") {constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix);}
 
     previous_cell_size = cell_size; 
@@ -470,6 +471,7 @@ template <int dim> void dGcGblowup<dim>::assemble_and_solve (const unsigned int 
 {
 if (nonlinear_solver == "newton") {deallog << "Calculating the numerical solution via Newton iteration..." << std::endl;}
 if (nonlinear_solver == "picard") {deallog << "Calculating the numerical solution via Picard iteration..." << std::endl;}
+if (nonlinear_solver == "hybrid") {deallog << "Calculating the numerical solution via hybrid Picard/Newton iteration..." << std::endl;}
 
 const QGauss<dim> quadrature_formula_space (no_q_space_x); const QGauss<1> quadrature_formula_time (no_q_time);
 
@@ -515,7 +517,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
     for (; iteration_number < max_iterations; ++iteration_number)
     {
-    if (nonlinear_solver == "newton") {system_matrix.reinit (sparsity_pattern); system_matrix.add (1, static_system_matrix);} // Set the system matrix to the static part of the system matrix if using Newton iteration
+    if (nonlinear_solver == "newton" || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 0) || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 1)) {system_matrix.reinit (sparsity_pattern); system_matrix.add (1, static_system_matrix);} // Set the system matrix to the static part of the system matrix if using Newton iteration
 
     typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active ();
     typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (), final_cell = dof_handler.end ();
@@ -554,7 +556,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
         // Assemble the local contributions of the dynamic part of the system matrix if using Newton iteration
 
-        if (nonlinear_solver == "newton")
+        if (nonlinear_solver == "newton" || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 0))
         {
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
                 for (unsigned int l = 0; l < k + 1; ++l)
@@ -610,7 +612,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
                     local_right_hand_side(k) += nonlinearity_values(q_space + q_time*no_q_space)*fe_values_spacetime[k + q_space*dofs_per_cell + q_time*dofs_per_cell*no_q_space];
  	                }
        
-        if (nonlinear_solver == "newton") {local_right_hand_side *= -1;}
+        if (nonlinear_solver == "newton" || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 0)) {local_right_hand_side *= -1;}
 
         // Distribute the local contributions of the dynamic parts of the right-hand side vector to the global right-hand side vector
         constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, right_hand_side);
@@ -625,7 +627,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
     SolverControl solver_control (10000, 0.001*max*rel_tol, false, false);
     SolverBicgstab<> solver (solver_control, data);
 
-    if (nonlinear_solver == "newton") {preconditioner.initialize (system_matrix);}
+    if (nonlinear_solver == "newton" || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 0) || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 1)) {preconditioner.initialize (system_matrix);}
 
     solver.solve (system_matrix, solution, right_hand_side, preconditioner);
 
