@@ -140,7 +140,7 @@ private:
 	FE_DGQ<1> fe_time; FE_DGQ<1> old_fe_time; 
 	FESystem<dim> fe; FESystem<dim> old_fe;
 
-	ConstraintMatrix constraints;
+	AffineConstraints<double> constraints;
 	SparsityPattern sparsity_pattern;
 
 	SparseMatrix<double> system_matrix; // The system matrix is subdivided into a static portion which does not change between newton iterations and a dynamic portion which does 
@@ -394,7 +394,7 @@ const unsigned int no_q_space = quadrature_formula_space.size ();
 const unsigned int no_of_space_dofs = dof_handler_space.n_dofs ();
 const unsigned int dofs_per_cell_space = fe_space.dofs_per_cell;
 
-ConstraintMatrix spatial_constraints; SparsityPattern spatial_sparsity_pattern;
+AffineConstraints<double> spatial_constraints; SparsityPattern spatial_sparsity_pattern;
 
 spatial_constraints.clear ();
 DoFTools::make_hanging_node_constraints (dof_handler_space, spatial_constraints);
@@ -1333,7 +1333,7 @@ const unsigned int no_of_union_space_dofs = dof_handler_space_union.n_dofs ();
 const unsigned int no_of_union_dofs = no_of_union_space_dofs*(time_degree + 1);
 const unsigned int no_of_union_cells = union_triangulation.n_active_cells ();
 
-ConstraintMatrix spatial_union_constraints, union_constraints;
+AffineConstraints<double> spatial_union_constraints, union_constraints;
 
 spatial_union_constraints.clear ();
 DoFTools::make_hanging_node_constraints (dof_handler_space_union, spatial_union_constraints);
@@ -1895,7 +1895,7 @@ FEValues<dim> fe_values_space_union (fe_space_union, quadrature_formula_space, u
 const unsigned int no_of_union_space_dofs = dof_handler_space_union.n_dofs ();
 const unsigned int no_of_union_dofs = no_of_union_space_dofs*(time_degree + 1);
 
-ConstraintMatrix spatial_union_constraints, union_constraints;
+AffineConstraints<double> spatial_union_constraints, union_constraints;
 
 spatial_union_constraints.clear ();
 DoFTools::make_hanging_node_constraints (dof_handler_space_union, spatial_union_constraints);
@@ -2049,7 +2049,7 @@ else
 {
 Vector<double> old_solution_plus_interpolated (dof_handler_space.n_dofs());
 
-ConstraintMatrix spatial_constraints;
+AffineConstraints<double> spatial_constraints;
 
 spatial_constraints.clear ();
 DoFTools::make_hanging_node_constraints (dof_handler_space, spatial_constraints);
