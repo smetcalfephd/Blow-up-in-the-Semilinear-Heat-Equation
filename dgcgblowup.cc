@@ -99,9 +99,9 @@ public:
 	double delta_residual_threshold = 1e-4; // The threshold for the delta equation residual above which we consider the delta equation as having no root
 
     // Nonlinear solver parameters
-    const std::string nonlinear_solver = "hybrid"; // Choose whether the nonlinear solver uses the "picard", "newton" or "hybrid" method
-    const unsigned int newton_every_x_steps = 5; // If using the hybrid method, does a Newton step every x iterations
-    const unsigned int maximum_nonlinear_iterates = 25; // Maximum number of iterates the nonlinear solver will do before terminating
+    const std::string nonlinear_solver = "picard"; // Choose whether the nonlinear solver uses the "picard", "newton" or "hybrid" method
+    const unsigned int newton_every_x_steps = 4; // If using the hybrid method, does a Newton step every x iterations
+    const unsigned int maximum_nonlinear_iterates = 35; // Maximum number of iterates the nonlinear solver will do before terminating
     const double nonlinear_residual_threshold = 1e-13; // The nonlinear solver will continue to iterate until the difference in solutions is less than ||U||*nonlinear_residual_threshold
 
     // Mesh change parameters
@@ -776,7 +776,7 @@ template <int dim> void dGcGblowup<dim>::output_solution () const
 {
 DataOut<dim> data_out; data_out.attach_dof_handler (dof_handler_space); data_out.add_data_vector (solution_plus, "u_h"); data_out.build_patches ();
 
-const std::string filename = "solution-" + Utilities::int_to_string (timestep_number, 7) + ".gnuplot";
+const std::string filename = "solution-" + Utilities::int_to_string (timestep_number, 5) + ".gnuplot";
 
 std::ofstream gnuplot_output (filename.c_str()); data_out.write_gnuplot (gnuplot_output);
 }
@@ -2198,7 +2198,7 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
 
     time = time + dt;
 
-    deallog  << std::endl << "Timestep " << timestep_number << " at t=" << time << std::endl;
+    deallog  << std::endl << "Timestep " << timestep_number << " at t=" << std::setprecision (8) << time << std::setprecision (6) << std::endl;
     deallog << "Total Degrees of Freedom: " << dof_handler.n_dofs () << std::endl;
     deallog << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs () << std::endl;
     deallog << "\u0394t: " << dt << std::endl;
