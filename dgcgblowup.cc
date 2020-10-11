@@ -670,10 +670,11 @@ deallog << "Projecting the initial condition..." << std::endl;
 
 energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), projection);
 
-VectorTools::integrate_difference (dof_handler_space, projection, initialvalues<dim>(), error, QGauss<dim>(int(1.5*space_degree) + 1), VectorTools::Linfty_norm);
+VectorTools::integrate_difference (dof_handler_space, projection, initialvalues<dim>(), error, QGauss<dim>(int(1.5*space_degree) + 1), VectorTools::Linfty_norm); 
 etaS = error.linfty_norm ();
 
-deallog << "Initial Linfty Error: " << etaS << std::endl;
+deallog << "Initial Linfty Error: " << etaS << std::endl << std::endl;
+if (etaS > spatial_coarsening_threshold) {deallog << "Initial Linfty error is too large. Refining the mesh..." << std::endl;} else {deallog << "Initial Linfty error is sufficiently small. Proceeding to the initial setup step."<< std::endl;}
 
 GridRefinement::refine (triangulation_space, error, spatial_coarsening_threshold);
 triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
@@ -2121,7 +2122,7 @@ deallog << "Temporal Polynomial Degree: " << time_degree << std::endl;
 
 // Refine the mesh based on the initial condition
 
-deallog << std::endl << "Refining the spatial mesh based on the initial condition..." << std::endl;
+deallog << std::endl << "Refining the mesh based on the initial condition..." << std::endl;
 
 GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.refine_global (2);
 //GridGenerator::hyper_cube (triangulation_space, -9, 9); triangulation_space.refine_global (2);
@@ -2144,8 +2145,9 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
 
     setup_system_full ();
 
-    deallog << std::endl << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs() << std::endl;
-    deallog << "\u0394t: " << dt << std::endl;
+    deallog << std::endl << "Total Degrees of Freedom: " << dof_handler.n_dofs () << std::endl;
+    deallog << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs() << std::endl;
+    deallog << "\u0394t: " << dt << std::endl << std::endl;
     deallog << "Projecting the initial condition..." << std::endl;
 
     energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
@@ -2154,7 +2156,7 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
     compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, true); // Compute the space estimator
     compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
 
-    deallog << "Space Estimator: " << etaS << std::endl; // Output the value of the time estimator
+    deallog << std::endl << "Space Estimator: " << etaS << std::endl; // Output the value of the time estimator
     deallog << "Time Estimator: " << etaT << std::endl; // Output the value of the time estimator
 
     refine_mesh ();
@@ -2164,6 +2166,7 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
     dt = 0.5*dt; dt_old = dt; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.clear(); old_triangulation_time.copy_triangulation (triangulation_time);
     mesh_change = true;
     }
+    if (mesh_change == true) {deallog << std::endl << "Estimators are too large. Refining the initial parameters..." << std::endl;} else {deallog << std::endl << "Estimators are sufficiently small. Initial setup step is complete. Proceeding to the first timestep." << std::endl;}
     }
     }
     else
