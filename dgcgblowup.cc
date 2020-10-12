@@ -85,7 +85,7 @@ public:
 
 	// Error estimator parameters
 	double estimator = 0; // The error estimator
-	double etaS = 10; // The space estimator
+	double etaS = 1e16; // The space estimator
 	double etaT = 0; // The time estimator
 	double r = 0; // The scaling parameter r_m
 	double delta = 1.5; // The scaling parameter delta_m (the solution of the delta equation)
