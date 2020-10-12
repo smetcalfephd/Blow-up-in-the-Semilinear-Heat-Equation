@@ -2120,12 +2120,11 @@ void dGcGblowup<dim>::run ()
 deallog << "Spatial Polynomial Degree: " << space_degree << std::endl;
 deallog << "Temporal Polynomial Degree: " << time_degree << std::endl;
 
-// Refine the mesh based on the initial condition
-
-deallog << std::endl << "Refining the mesh based on the initial condition..." << std::endl;
-
 GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.refine_global (2);
 //GridGenerator::hyper_cube (triangulation_space, -9, 9); triangulation_space.refine_global (2);
+
+// Refine the mesh based on the initial condition
+deallog << std::endl << "~~Refining the mesh based on the initial condition~~" << std::endl;
 
 refine_initial_mesh ();
 
@@ -2133,7 +2132,7 @@ refine_initial_mesh ();
 old_triangulation_space.copy_triangulation (triangulation_space); old_old_triangulation_space.copy_triangulation (triangulation_space);
 GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.copy_triangulation (triangulation_time);
 
-deallog << std::endl << "Setting up the initial mesh and timestep length on the first timestep..." << std::endl;
+deallog << std::endl << "~~Setting up the initial mesh and timestep length on the first timestep~~" << std::endl;
 
     for (; fabs(delta_residual) < delta_residual_threshold; ++timestep_number) // Continue computing until the delta equation no longer has a solution
     {
@@ -2166,7 +2165,7 @@ deallog << std::endl << "Setting up the initial mesh and timestep length on the 
     dt = 0.5*dt; dt_old = dt; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.clear(); old_triangulation_time.copy_triangulation (triangulation_time);
     mesh_change = true;
     }
-    if (mesh_change == true) {deallog << std::endl << "Estimators are too large. Refining the initial parameters..." << std::endl;} else {deallog << std::endl << "Estimators are sufficiently small. Initial setup step is complete. Proceeding to the first timestep." << std::endl;}
+    if (mesh_change == true) {deallog << std::endl << "Estimators are too large. Refining the initial mesh and/or timestep length..." << std::endl;} else {deallog << std::endl << "Estimators are sufficiently small. Proceeding to the first timestep." << std::endl;}
     }
     }
     else
