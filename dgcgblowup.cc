@@ -1,4 +1,4 @@
-#include <deal.II/base/quadrature.h>
+﻿#include <deal.II/base/quadrature.h>
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/fe/fe_dgq.h>
@@ -38,8 +38,8 @@ const unsigned int no_of_points = points.size();
 	{
 	const double x = points[point](0); const double y = points[point](1);
 
-    //values[point] = 10*(x*x + y*y)*exp(-0.5*(x*x + y*y));
-    values[point] = 10*exp(-2*(x*x + y*y));
+    values[point] = 10*(x*x + y*y)*exp(-0.5*(x*x + y*y));
+    //values[point] = 10*exp(-2*(x*x + y*y));
 	}
 }
 
@@ -60,8 +60,8 @@ const unsigned int no_of_points = points.size();
 	{
 	const double x = points[point](0); const double y = points[point](1);
 
-    //values[point] = 10*(x*x*x*x + y*y*y*y + 2*x*x*y*y - 6*x*x - 6*y*y + 4)*exp(-0.5*(x*x + y*y));
-    values[point] = 80*(2*(x*x + y*y) - 1)*exp(-2*(x*x + y*y));
+    values[point] = 10*(x*x*x*x + y*y*y*y + 2*x*x*y*y - 6*x*x - 6*y*y + 4)*exp(-0.5*(x*x + y*y));
+    //values[point] = 80*(2*(x*x + y*y) - 1)*exp(-2*(x*x + y*y));
 	}
 }
 
@@ -76,26 +76,18 @@ public:
     const double a = 1; // Diffusion coefficient
 
     // Discretisation parameters
-    const unsigned int space_degree = 3; // Spatial polynomial degree
+    const unsigned int space_degree = 13; // Spatial polynomial degree
 	const unsigned int time_degree = 1; // Temporal polynomial degree
+    const unsigned int refine_every_n_timesteps = 2; // Potentially refine the mesh every n timesteps
     unsigned int timestep_number = 0; // The current timestep
     double time = 0; // The current time
-    double dt = 0.5*0.215; // The current timestep length
+    double dt = 0.1; // The current timestep length
 	double dt_old = dt; // The timestep length on the last time interval
-
-	// Error estimator parameters
-	double estimator = 0; // The error estimator
-	double etaS = 1e16; // The space estimator
-	double etaT = 0; // The time estimator
-	double r = 0; // The scaling parameter r_m
-	double delta = 1.5; // The scaling parameter delta_m (the solution of the delta equation)
-	double solution_time_integral = 0; // The (time) integral of the Linfty norm of the numerical solution
-	double delta_residual = 0; // The residual arising from the numerical solution of the delta equation
 
 	// Error estimator thresholds
     double spatial_refinement_threshold = 1; // The spatial refinement threshold
     double spatial_coarsening_threshold = 0.1*std::pow(2.0, -1.0*space_degree)*spatial_refinement_threshold; // The spatial coarsening threshold
-	double temporal_refinement_threshold = 1e-3; // The temporal refinement threshold
+	double temporal_refinement_threshold = 10; // The temporal refinement threshold
 	double delta_residual_threshold = 1e-4; // The threshold for the delta equation residual above which we consider the delta equation as having no root
 
     // Nonlinear solver parameters
@@ -103,6 +95,19 @@ public:
     const unsigned int newton_every_x_steps = 4; // If using the hybrid method, does a Newton step every x iterations
     const unsigned int maximum_nonlinear_iterates = 35; // Maximum number of iterates the nonlinear solver will do before terminating
     const double nonlinear_residual_threshold = 1e-13; // The nonlinear solver will continue to iterate until the difference in solutions is less than ||U||*nonlinear_residual_threshold
+
+
+    // ~~INTERNAL PARAMETERS~~ -- LEAVE ALONE!!
+
+
+    // Error estimator parameters
+	double estimator = 0; // The error estimator
+	double etaS = 1e16; // The space estimator
+	double etaT = 0; // The time estimator
+	double r = 0; // The scaling parameter r_m
+	double delta = 1.5; // The scaling parameter delta_m (the solution of the delta equation)
+	double solution_time_integral = 0; // The (time) integral of the Linfty norm of the numerical solution
+	double delta_residual = 0; // The residual arising from the numerical solution of the delta equation
 
     // Mesh change parameters
     bool mesh_change = true; // Parameter indicating if mesh change recently occured between triangulation_space and old_triangulation_space
@@ -659,7 +664,7 @@ if (iteration_number == max_iterations) {deallog << "...converged in the maximum
 
 template <int dim> void dGcGblowup<dim>::refine_initial_mesh ()
 {
-while (etaS > spatial_coarsening_threshold)
+while (etaS > spatial_refinement_threshold)
 {
 dof_handler_space.distribute_dofs (fe_space);
 
@@ -670,13 +675,13 @@ deallog << "Projecting the initial condition..." << std::endl;
 
 energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), projection);
 
-VectorTools::integrate_difference (dof_handler_space, projection, initialvalues<dim>(), error, QGauss<dim>(int(1.5*space_degree) + 1), VectorTools::Linfty_norm); 
+VectorTools::integrate_difference (dof_handler_space, projection, initialvalues<dim>(), error, QGauss<dim>(2*space_degree + 1), VectorTools::Linfty_norm); 
 etaS = error.linfty_norm ();
 
 deallog << "Initial Linfty Error: " << etaS << std::endl << std::endl;
-if (etaS > spatial_coarsening_threshold) {deallog << "Initial Linfty error is too large. Refining the mesh..." << std::endl;} else {deallog << "Initial Linfty error is sufficiently small. Proceeding to the initial setup step."<< std::endl;}
+if (etaS > spatial_refinement_threshold) {deallog << "Initial Linfty error is too large. Refining the mesh..." << std::endl;} else {deallog << "Initial Linfty error is sufficiently small. Proceeding to the initial setup step."<< std::endl;}
 
-GridRefinement::refine (triangulation_space, error, spatial_coarsening_threshold);
+GridRefinement::refine (triangulation_space, error, spatial_refinement_threshold);
 triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
 }	
 }
@@ -685,10 +690,13 @@ triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.ex
 
 template <int dim> void dGcGblowup<dim>::refine_mesh ()
 {
+if (timestep_number % refine_every_n_timesteps == 0)
+{
 GridRefinement::refine (triangulation_space, refinement_vector, spatial_refinement_threshold);
 GridRefinement::coarsen (triangulation_space, refinement_vector, spatial_coarsening_threshold);
 
 triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
+}
 
 // Just because we TRY to refine the mesh DOES NOT MEAN IT CHANGES (EVEN IF SOME CELLS ARE FLAGGED)! The routine below checks whether or not the mesh has REALLY been modified
 // If the mesh has been modified, we change mesh_change to true
@@ -2120,8 +2128,8 @@ void dGcGblowup<dim>::run ()
 deallog << "Spatial Polynomial Degree: " << space_degree << std::endl;
 deallog << "Temporal Polynomial Degree: " << time_degree << std::endl;
 
-GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.refine_global (2);
-//GridGenerator::hyper_cube (triangulation_space, -9, 9); triangulation_space.refine_global (2);
+//GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.refine_global (2);
+GridGenerator::hyper_cube (triangulation_space, -9, 9); triangulation_space.refine_global (2);
 
 // Refine the mesh based on the initial condition
 deallog << std::endl << "~~Refining the mesh based on the initial condition~~" << std::endl;
@@ -2152,8 +2160,8 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
     energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), solution_plus); old_solution_plus = solution_plus;
     output_solution ();
     assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1, maximum_nonlinear_iterates, nonlinear_residual_threshold); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, true); // Compute the space estimator
-    compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
+    compute_space_estimator (2*space_degree + 1, 2*time_degree + 1, true); // Compute the space estimator
+    compute_time_estimator (2*space_degree + 1, 2*time_degree + 1); // Compute the time estimator
 
     deallog << std::endl << "Space Estimator: " << etaS << std::endl; // Output the value of the time estimator
     deallog << "Time Estimator: " << etaT << std::endl; // Output the value of the time estimator
@@ -2171,8 +2179,8 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
     else
     {
     assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1, maximum_nonlinear_iterates, nonlinear_residual_threshold); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, true); // Compute the space estimator
-    compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
+    compute_space_estimator (2*space_degree + 1, 2*time_degree + 1, true); // Compute the space estimator
+    compute_time_estimator (2*space_degree + 1, 2*time_degree + 1); // Compute the time estimator
 
     refine_mesh ();
 
@@ -2190,8 +2198,8 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
 
     setup_system_partial ();
     assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1, maximum_nonlinear_iterates, nonlinear_residual_threshold); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, false); // Compute the space estimator
-    compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
+    compute_space_estimator (2*space_degree + 1, 2*time_degree + 1, false); // Compute the space estimator
+    compute_time_estimator (2*space_degree + 1, 2*time_degree + 1); // Compute the time estimator
     }
 
     }
