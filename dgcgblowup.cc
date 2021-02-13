@@ -87,7 +87,7 @@ public:
 	// Error estimator thresholds
     double spatial_refinement_threshold = 1; // The spatial refinement threshold
     double spatial_coarsening_threshold = 0.1*std::pow(2.0, -1.0*space_degree)*spatial_refinement_threshold; // The spatial coarsening threshold
-	double temporal_refinement_threshold = 10; // The temporal refinement threshold
+	double temporal_refinement_threshold = 1; // The temporal refinement threshold
 	double delta_residual_threshold = 1e-4; // The threshold for the delta equation residual above which we consider the delta equation as having no root
 
     // Nonlinear solver parameters
