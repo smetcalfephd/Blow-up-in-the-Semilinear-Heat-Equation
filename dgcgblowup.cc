@@ -154,12 +154,9 @@ private:
 
     SparseILU<double> preconditioner;
 
-	BlockVector<double> reordered_solution; // Reordered solution vector with each block representing a temporal node
-    BlockVector<double> reordered_old_solution;
+	BlockVector<double> reordered_solution; // The solution on the current timestep
+    BlockVector<double> reordered_old_solution; // The solution on the previous timestep
 
-	Vector<double> right_hand_side; // The right-hand side is subdivided into a static portion which does not change between newton iterations and a dynamic portion which does
-    Vector<double> static_right_hand_side; // The static part of the right-hand side
-	Vector<double> solution; // The solution on the current timestep
 	Vector<double> old_old_solution_plus; // The solution evaluated at final time on the previous previous timestep
     Vector<double> refinement_vector; // Vector used to refine the mesh
 };
@@ -209,9 +206,6 @@ reordered_old_solution.reinit (time_degree + 1);
 reordered_solution.collect_sizes ();
 reordered_old_solution.collect_sizes ();
 
-right_hand_side.reinit (no_of_dofs);
-static_right_hand_side.reinit (no_of_dofs);
-solution.reinit (no_of_dofs);
 old_old_solution_plus.reinit (no_of_old_old_space_dofs);
 refinement_vector.reinit (no_of_cells);
 
@@ -248,9 +242,6 @@ reordered_solution.reinit (time_degree + 1);
 
 reordered_solution.collect_sizes ();
 
-right_hand_side.reinit (no_of_dofs);
-static_right_hand_side.reinit (no_of_dofs);
-solution.reinit (no_of_dofs);
 refinement_vector.reinit (no_of_cells);
 }
 
@@ -473,10 +464,14 @@ const QGauss<dim> quadrature_formula_space (no_q_space_x); const QGauss<1> quadr
 FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values | update_quadrature_points | update_JxW_values);
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_JxW_values);
 
+const unsigned int no_of_dofs = dof_handler.n_dofs();
 const unsigned int no_q_space = quadrature_formula_space.size();
 const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
 FullMatrix<double> local_system_matrix (dofs_per_cell, dofs_per_cell);
+Vector<double> temporary_solution (no_of_dofs);
+Vector<double> right_hand_side (no_of_dofs);
+Vector<double> static_right_hand_side (no_of_dofs);
 Vector<double> solution_values (no_q_space*no_q_time);
 Vector<double> nonlinearity_values (no_q_space*no_q_time);
 Vector<double> residual_vector (dof_handler.n_dofs());
@@ -491,8 +486,8 @@ if (mesh_change == false) // Extend the numerical solution at final time on the 
 {
 switch (time_degree)
 {
-case 0: solution = reordered_old_solution.block(time_degree); break;
-default: extend_to_constant_in_time_function (reordered_old_solution.block(time_degree), solution);
+case 0: temporary_solution = reordered_old_solution.block(time_degree); break;
+default: extend_to_constant_in_time_function (reordered_old_solution.block(time_degree), temporary_solution);
 }
 }
 else // If the mesh has changed, we do as above but must first interpolate to the current finite element space
@@ -501,14 +496,14 @@ VectorTools::interpolate_to_different_mesh (old_dof_handler_space, reordered_old
 
 switch (time_degree)
 {
-case 0: solution = reordered_solution.block(time_degree); break;
-default: extend_to_constant_in_time_function (reordered_solution.block(time_degree), solution);
+case 0: temporary_solution = reordered_solution.block(time_degree); break;
+default: extend_to_constant_in_time_function (reordered_solution.block(time_degree), temporary_solution);
 }
 }
 
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active (); fe_values_time.reinit (time_cell);
 
-unsigned int iteration_number = 1; double residual = 0; double max = solution.linfty_norm(); static_right_hand_side = 0; 
+unsigned int iteration_number = 1; double residual = 0; double max = reordered_old_solution.block(time_degree).linfty_norm(); static_right_hand_side = 0; 
 
     for (; iteration_number < max_iterations; ++iteration_number)
     {
@@ -517,7 +512,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
     typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active ();
     typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (), final_cell = dof_handler.end ();
 
-    residual_vector = solution;
+    residual_vector = temporary_solution;
 
     double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0; right_hand_side = 0;
     
@@ -532,7 +527,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
         cell_size_check = fabs(cell_size - previous_cell_size);
  
         if (iteration_number == 1) {old_solution_plus_function.value_list (fe_values_space.get_quadrature_points(), old_solution_plus_values);}
-        get_spacetime_function_values (solution, fe_values_space, fe_values_time, local_dof_indices, solution_values); 
+        get_spacetime_function_values (temporary_solution, fe_values_space, fe_values_time, local_dof_indices, solution_values); 
         nonlinearity_values = solution_values;
 
             for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
@@ -620,18 +615,18 @@ unsigned int iteration_number = 1; double residual = 0; double max = solution.li
 
     if (nonlinear_solver == "newton" || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 0) || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 1)) {preconditioner.initialize (system_matrix);}
 
-    solver.solve (system_matrix, solution, right_hand_side, preconditioner);
+    solver.solve (system_matrix, temporary_solution, right_hand_side, preconditioner);
 
-    constraints.distribute (solution);
+    constraints.distribute (temporary_solution);
 
     // Compute the residual
-    residual_vector.add (-1, solution);
+    residual_vector.add (-1, temporary_solution);
     residual = residual_vector.linfty_norm ();
 
     if (residual < max*rel_tol) {break;} // Terminate the nonlinear iteration when the difference in solutions is sufficiently small
     }
 
-switch(time_degree) {case 0: reordered_solution.block(time_degree) = solution; break; default: reorder_solution_vector (solution, reordered_solution, dof_handler_space, dof_handler, fe);}
+switch(time_degree) {case 0: reordered_solution.block(0) = temporary_solution; break; default: reorder_solution_vector (temporary_solution, reordered_solution, dof_handler_space, dof_handler, fe);}
 
 if (iteration_number == max_iterations) {deallog << "...converged in the maximum number of allowed iterations (" << max_iterations << ") with a residual of " << residual << std::endl;} else {deallog << "...converged in " << iteration_number << " iterations with a residual of " << residual << std::endl;}
 }
@@ -1885,7 +1880,6 @@ DoFHandler<dim> dof_handler_union (union_triangulation); FESystem<dim> fe_union 
 FEValues<dim> fe_values_space_union (fe_space_union, quadrature_formula_space, update_values | update_quadrature_points);
 
 const unsigned int no_of_union_space_dofs = dof_handler_space_union.n_dofs ();
-const unsigned int no_of_union_dofs = no_of_union_space_dofs*(time_degree + 1);
 
 AffineConstraints<double> spatial_union_constraints, union_constraints;
 
@@ -2028,7 +2022,7 @@ if (mesh_change == false)
 {
 switch(time_degree)
 {
-case 0: reconstructed_solution_at_quadrature_point = solution; reconstructed_solution_at_quadrature_point *= 0.5; reconstructed_solution_at_quadrature_point.add(0.5, reordered_old_solution.block(time_degree)); solution_time_integral = dt*reconstructed_solution_at_quadrature_point.linfty_norm(); break;
+case 0: reconstructed_solution_at_quadrature_point = reordered_solution.block(0); reconstructed_solution_at_quadrature_point *= 0.5; reconstructed_solution_at_quadrature_point.add(0.5, reordered_old_solution.block(time_degree)); solution_time_integral = dt*reconstructed_solution_at_quadrature_point.linfty_norm(); break;
 default:
 const QGaussLobatto<1> quadrature_formula_time (time_degree + 1);
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_quadrature_points | update_JxW_values);
@@ -2064,7 +2058,7 @@ VectorTools::interpolate_to_different_mesh (old_dof_handler_space, reordered_old
 
 switch(time_degree)
 {
-case 0: reconstructed_solution_at_quadrature_point = solution; reconstructed_solution_at_quadrature_point *= 0.5; reconstructed_solution_at_quadrature_point.add(0.5, old_solution_plus_interpolated); solution_time_integral = dt*reconstructed_solution_at_quadrature_point.linfty_norm(); break;
+case 0: reconstructed_solution_at_quadrature_point = reordered_solution.block(0); reconstructed_solution_at_quadrature_point *= 0.5; reconstructed_solution_at_quadrature_point.add(0.5, old_solution_plus_interpolated); solution_time_integral = dt*reconstructed_solution_at_quadrature_point.linfty_norm(); break;
 default:
 const QGaussLobatto<1> quadrature_formula_time (time_degree + 1);
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_quadrature_points | update_JxW_values);
