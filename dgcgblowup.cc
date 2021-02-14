@@ -140,11 +140,11 @@ private:
 
 	DoFHandler<dim> dof_handler_space; DoFHandler<dim> old_dof_handler_space; DoFHandler<dim> old_old_dof_handler_space; 
 	DoFHandler<1> dof_handler_time; DoFHandler<1> old_dof_handler_time; 
-	DoFHandler<dim> dof_handler; DoFHandler<dim> old_dof_handler;
+	DoFHandler<dim> dof_handler;
 
     FE_Q<dim> fe_space; FE_Q<dim> old_fe_space; FE_Q<dim> old_old_fe_space; 
 	FE_DGQ<1> fe_time; FE_DGQ<1> old_fe_time; 
-	FESystem<dim> fe; FESystem<dim> old_fe;
+	FESystem<dim> fe;
 
 	AffineConstraints<double> constraints;
 	SparsityPattern sparsity_pattern;
@@ -165,10 +165,10 @@ template <int dim> dGcGblowup<dim>::dGcGblowup ()
                 :
 				dof_handler_space (triangulation_space), old_dof_handler_space (old_triangulation_space), old_old_dof_handler_space (old_old_triangulation_space),
 				dof_handler_time (triangulation_time), old_dof_handler_time (old_triangulation_time),
-				dof_handler (triangulation_space), old_dof_handler (old_triangulation_space),
+				dof_handler (triangulation_space),
 				fe_space (space_degree), old_fe_space (space_degree), old_old_fe_space (space_degree),
 				fe_time (time_degree), old_fe_time (time_degree),
-				fe (fe_space, time_degree + 1), old_fe (old_fe_space, time_degree + 1)
+				fe (fe_space, time_degree + 1)
 {}
 
 // Initialises all vectors, distributes all degrees of freedom and computes the static part of the system matrix
@@ -177,7 +177,7 @@ template <int dim> void dGcGblowup<dim>::setup_system_full ()
 {
 dof_handler_space.distribute_dofs (fe_space); old_dof_handler_space.distribute_dofs (old_fe_space); old_old_dof_handler_space.distribute_dofs (old_old_fe_space);
 dof_handler_time.distribute_dofs (fe_time); old_dof_handler_time.distribute_dofs (old_fe_time);
-dof_handler.distribute_dofs (fe); old_dof_handler.distribute_dofs (old_fe); 
+dof_handler.distribute_dofs (fe); 
 
 const unsigned int no_of_space_dofs = dof_handler_space.n_dofs ();
 const unsigned int no_of_old_space_dofs = old_dof_handler_space.n_dofs ();
@@ -736,7 +736,7 @@ old_old_solution_plus = reordered_old_solution.block(time_degree);
 if (mesh_change == true)
 {
 old_triangulation_space.clear (); old_triangulation_space.copy_triangulation (triangulation_space);
-old_dof_handler_space.distribute_dofs (old_fe_space); old_dof_handler.distribute_dofs (old_fe);
+old_dof_handler_space.distribute_dofs (old_fe_space);
 
 reordered_old_solution.reinit (time_degree + 1);
 
@@ -928,7 +928,6 @@ std::vector<double> Q_derivative_values (no_q_time);
 std::vector<double> Q_second_derivative_values (no_q_time);
 std::vector<Tensor<1,1>> L2_projection_f_time_derivative_values (no_q_time);
 std::vector<Tensor<2,dim>> solution_hessian_values (no_q_space); 
-std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 std::vector<types::global_dof_index> local_dof_indices_space (dofs_per_cell_space);
 
 Vector<double> jump_values (no_q_space_x);
@@ -974,8 +973,7 @@ space_derivative_estimator_values.collect_sizes ();
 reordered_solution_at_temporal_quadrature_points.collect_sizes ();
 reordered_solution_time_derivative_at_temporal_quadrature_points.collect_sizes ();
   
-typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (), final_cell = dof_handler.end ();
-typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active ();
+typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active (), final_space_cell = dof_handler_space.end ();
 
 // At each temporal quadrature point, compute the spatial finite element coefficients which define the spacetime function and it's temporal derivative at that point
 
@@ -994,16 +992,16 @@ double h = 0; double h_min = GridTools::minimal_cell_diameter (triangulation_spa
 etaS = 0; double space_estimator_jump_value = 0; double jump_value = 0; double nonlinearity_value = 0;
 if (output_refinement_vector == true) {refinement_vector = 0;}
 
-    for (; cell != final_cell; ++cell, ++space_cell)
+    for (; space_cell != final_space_cell; ++space_cell)
     {
     // Compute the cell residual contribution to the space and space derivative estimators
 
     estimator_values = 0; derivative_estimator_values = 0;
     fe_values_space.reinit (space_cell);
-    cell->get_dof_indices (local_dof_indices); space_cell->get_dof_indices (local_dof_indices_space);
+    space_cell->get_dof_indices (local_dof_indices_space);
 
-    const unsigned int cell_no = cell->active_cell_index ();   
-    h = cell->diameter(); C_cell = fmin(1/a, h*h*ell_h/a); C_edge = fmin(1, h*ell_h);
+    const unsigned int cell_no = space_cell->active_cell_index ();   
+    h = space_cell->diameter(); C_cell = fmin(1/a, h*h*ell_h/a); C_edge = fmin(1, h*ell_h);
 
     switch(time_degree)
     {	
@@ -1402,7 +1400,7 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
     {
     estimator_values = 0; derivative_estimator_values = 0;
     fe_values_space_union.reinit (union_space_cell);
-    union_cell->get_dof_indices (local_dof_indices); union_space_cell->get_dof_indices (local_dof_indices_space);
+    union_space_cell->get_dof_indices (local_dof_indices_space);
 
     const unsigned int cell_no = union_cell->active_cell_index ();   
     h = union_cell->diameter(); C_cell = fmin(1/a, h*h*ell_h/a); C_edge = fmin(1, h*ell_h);
@@ -1737,7 +1735,6 @@ std::vector<double> L2_projection_f_values (no_q_time);
 std::vector<double> old_old_solution_plus_values (no_q_space);
 std::vector<double> Q_values (no_q_time);
 std::vector<double> Q_derivative_values (no_q_time);
-std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 std::vector<types::global_dof_index> local_dof_indices_space (dofs_per_cell_space);
 
 if (time_degree > 0)
@@ -1760,18 +1757,17 @@ if (mesh_change == false && old_mesh_change == false) // If mesh_change == false
 {
 FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values | update_quadrature_points);
 
-typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (), final_cell = dof_handler.end ();
-typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active ();
+typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active (), final_space_cell = dof_handler_space.end ();
 
 etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; double nonlinearity_value = 0; double solution_time_derivative_value = 0; 
 
     // Loop over all cells, compute the Linfty norm of the temporal residual of the solution at each temporal quadrature point and store it in estimator_values
 
-    for (; cell != final_cell; ++cell, ++space_cell)
+    for (; space_cell != final_space_cell; ++space_cell)
     {
     fe_values_space.reinit (space_cell);
 
-    cell->get_dof_indices (local_dof_indices); space_cell->get_dof_indices (local_dof_indices_space);
+    space_cell->get_dof_indices (local_dof_indices_space);
 
     get_block_spacetime_function_values (reordered_solution, fe_values_space, fe_values_time, local_dof_indices_space, solution_values);
 
@@ -1927,7 +1923,7 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; doubl
     {
     fe_values_space_union.reinit (union_space_cell);
 
-    union_cell->get_dof_indices (local_dof_indices); union_space_cell->get_dof_indices (local_dof_indices_space);
+    union_space_cell->get_dof_indices (local_dof_indices_space);
 
     get_block_spacetime_function_values (reordered_solution_union, fe_values_space_union, fe_values_time, local_dof_indices_space, solution_values);
     get_block_spacetime_function_values (reordered_old_solution_union, fe_values_space_union, old_fe_values_time, local_dof_indices_space, old_solution_values); 
