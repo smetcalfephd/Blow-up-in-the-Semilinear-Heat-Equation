@@ -793,20 +793,19 @@ spacetime_fe_function_values = 0;
 template<int dim> void dGcGblowup<dim>::get_block_spacetime_function_values (const BlockVector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices_space, Vector<double> &spacetime_fe_function_values) const
 {
 const unsigned int no_q_space = fe_values_space.get_quadrature().size(); const unsigned int no_q_time = fe_values_time.get_quadrature().size();
-const unsigned int dofs_per_cell = fe.dofs_per_cell;
+const unsigned int dofs_per_cell_space = fe_space.dofs_per_cell;
 
 spacetime_fe_function_values = 0;
 
-    for (unsigned int i = 0; i < dofs_per_cell; ++i)
-    {
-    const unsigned int comp_s_i = fe.system_to_component_index(i).second; const unsigned int comp_t_i = fe.system_to_component_index(i).first;
-
-    double fe_value_i = spacetime_fe_function.block(comp_t_i)(local_dof_indices_space[comp_s_i]);
-
-        for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-            spacetime_fe_function_values (q_space + q_time*no_q_space) += fe_value_i*fe_values_space.shape_value(comp_s_i, q_space)*fe_values_time.shape_value(comp_t_i, q_time);
-    }
+    for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+        for (unsigned int r = 0; r < time_degree + 1; ++r)
+        {
+        const double value_i = spacetime_fe_function.block(r)(local_dof_indices_space[i]);
+        
+            for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+                for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+                spacetime_fe_function_values (q_space + q_time*no_q_space) += value_i*fe_values_space.shape_value(i,q_space)*fe_values_time.shape_value(r,q_time);
+        }
 }
 
 // Helper function which reorders the spacetime FEM vector into a blockvector with each block representing a temporal node
