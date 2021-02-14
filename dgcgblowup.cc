@@ -126,7 +126,6 @@ private:
     void refine_mesh (); // Refines all cells with refinement_vector(cell_no) > spatial_refinement_threshold and coarsens all cells with refinement_vector(cell_no) < spatial_coarsening_threshold
     void prepare_for_next_time_step (); // Prepares the vectors, triangulations and dof_handlers for the next time step by setting them to previous values
 	void output_solution () const; // Outputs the solution at final time on the current time step
-	void get_spacetime_function_values (const Vector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices, Vector<double> &spacetime_fe_prepare_for_next_timestepfunction_values) const; // Helper function to evaluate the spacetime FEM function at the spatial and temporal quadrature points
     void get_block_spacetime_function_values (const BlockVector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices_space, Vector<double> &spacetime_fe_prepare_for_next_timestepfunction_values) const; // Helper function to evaluate the spacetime FEM function at the spatial and temporal quadrature points
     void reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, const DoFHandler<dim> &dof_handler_space, const DoFHandler<dim> &dof_handler, const FESystem<dim> &fe) const; // Helper function which reorders the spacetime FEM vector into a blockvector with each block representing a temporal node
 	void extend_to_constant_in_time_function (Vector<double> &fe_function, Vector<double> &spacetime_fe_function) const; // Helper function which takes a spatial FEM function and expands it to a constant-in-time spacetime FEM function
@@ -477,12 +476,12 @@ default: extend_to_constant_in_time_function (old_solution.block(time_degree), t
 }
 else // If the mesh has changed, we do as above but must first interpolate to the current finite element space
 {
-VectorTools::interpolate_to_different_mesh (old_dof_handler_space, old_solution.block(time_degree), dof_handler_space, solution.block(time_degree));
+VectorTools::interpolate_to_different_mesh (old_dof_handler_space, old_solution.block(time_degree), dof_handler_space, solution.block(0));
 
 switch (time_degree)
 {
-case 0: temporary_solution = solution.block(time_degree); break;
-default: extend_to_constant_in_time_function (solution.block(time_degree), temporary_solution);
+case 0: temporary_solution = solution.block(0); break;
+default: extend_to_constant_in_time_function (solution.block(0), temporary_solution);
 }
 }
 
@@ -503,7 +502,6 @@ unsigned int iteration_number = 1; double residual = 0; double max = old_solutio
     
         for (; cell != final_cell; ++cell, ++space_cell)
         {
-        local_system_matrix = 0; local_right_hand_side = 0;
         fe_values_space.reinit (space_cell);
 
         cell->get_dof_indices (local_dof_indices);
@@ -512,13 +510,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = old_solutio
         cell_size_check = fabs(cell_size - previous_cell_size);
  
         if (iteration_number == 1) {old_solution_plus_function.value_list (fe_values_space.get_quadrature_points(), old_solution_plus_values);}
-        get_spacetime_function_values (temporary_solution, fe_values_space, fe_values_time, local_dof_indices, solution_values); 
-        nonlinearity_values = solution_values;
 
-            for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-                for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-                solution_values(q_space + q_time*no_q_space) *= fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
-        
         if (cell_size_check > 1e-15)
         {
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
@@ -530,6 +522,18 @@ unsigned int iteration_number = 1; double residual = 0; double max = old_solutio
                     fe_values_spacetime[k + q_space*dofs_per_cell + q_time*dofs_per_cell*no_q_space] = fe_values_space.shape_value(comp_s_k,q_space)*fe_values_time.shape_value(comp_t_k,q_time);
             }
         }
+
+            for (unsigned int k = 0; k < dofs_per_cell; ++k)
+                for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+                    for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+                    solution_values(q_space + q_time*no_q_space) += temporary_solution(local_dof_indices[k])*fe_values_spacetime[k + q_space*dofs_per_cell + q_time*dofs_per_cell*no_q_space];
+        
+            for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+                for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
+                {
+                nonlinearity_values(q_space + q_time*no_q_space) = solution_values(q_space + q_time*no_q_space)*solution_values(q_space + q_time*no_q_space)*fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
+                if (nonlinear_solver == "newton" || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 0)) {solution_values(q_space + q_time*no_q_space) *= fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);}
+                }
 
         // Assemble the local contributions of the dynamic part of the system matrix if using Newton iteration
 
@@ -548,12 +552,8 @@ unsigned int iteration_number = 1; double residual = 0; double max = old_solutio
         local_system_matrix *= -2;
 
         // Distribute the local contributions of the dynamic part of the system matrix to the global system matrix if using Newton iteration
-        constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix);
-        }
-
-            for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-                for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-                nonlinearity_values(q_space + q_time*no_q_space) *= solution_values(q_space + q_time*no_q_space);
+        constraints.distribute_local_to_global (local_system_matrix, local_dof_indices, system_matrix); local_system_matrix = 0; 
+        }        
        
         // If on the first nonlinear iteration, assemble the local contributions of the static right-hand side vector and place them in the global static right-hand side vector
 
@@ -561,7 +561,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = old_solutio
         {
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
             {
-            unsigned int comp_s_i = fe.system_to_component_index(i).second; unsigned int comp_t_i = fe.system_to_component_index(i).first;
+            const unsigned int comp_s_i = fe.system_to_component_index(i).second; const unsigned int comp_t_i = fe.system_to_component_index(i).first;
 
             if (comp_t_i == 0)
             {
@@ -570,8 +570,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = old_solutio
             }
             }
 
-        constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, static_right_hand_side);
-        local_right_hand_side = 0;
+        constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, static_right_hand_side); local_right_hand_side = 0;
         } 
 
         // Assemble the local contributions of the dynamic part of the right-hand side vector
@@ -584,7 +583,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = old_solutio
         if (nonlinear_solver == "newton" || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 0)) {local_right_hand_side *= -1;}
 
         // Distribute the local contributions of the dynamic parts of the right-hand side vector to the global right-hand side vector
-        constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, right_hand_side);
+        constraints.distribute_local_to_global (local_right_hand_side, local_dof_indices, right_hand_side); local_right_hand_side = 0; solution_values = 0;
 
         previous_cell_size = cell_size;
         } 
@@ -750,27 +749,6 @@ DataOut<dim> data_out; data_out.attach_dof_handler (dof_handler_space); data_out
 const std::string filename = "solution-" + Utilities::int_to_string (timestep_number, 3) + ".gnuplot";
 
 std::ofstream gnuplot_output (filename.c_str()); data_out.write_gnuplot (gnuplot_output);
-}
-
-// Helper function to evaluate the spacetime FEM function at the spatial and temporal quadrature points
-
-template<int dim> void dGcGblowup<dim>::get_spacetime_function_values (const Vector<double> &spacetime_fe_function, const FEValues<dim> &fe_values_space, const FEValues<1> &fe_values_time, const std::vector<types::global_dof_index> &local_dof_indices, Vector<double> &spacetime_fe_function_values) const
-{
-const unsigned int no_q_space = fe_values_space.get_quadrature().size(); const unsigned int no_q_time = fe_values_time.get_quadrature().size();
-const unsigned int dofs_per_cell = fe.dofs_per_cell;
-
-spacetime_fe_function_values = 0;
-
-    for (unsigned int i = 0; i < dofs_per_cell; ++i)
-    {
-    const unsigned int comp_s_i = fe.system_to_component_index(i).second; const unsigned int comp_t_i = fe.system_to_component_index(i).first;
-
-    const double value = spacetime_fe_function(local_dof_indices[i]);
-
-        for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-            for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-            spacetime_fe_function_values (q_space + q_time*no_q_space) += value*fe_values_space.shape_value(comp_s_i, q_space)*fe_values_time.shape_value(comp_t_i, q_time);
-    }
 }
 
 // Helper function to evaluate the spacetime FEM function at the spatial and temporal quadrature points
