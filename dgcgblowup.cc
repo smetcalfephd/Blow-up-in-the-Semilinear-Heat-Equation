@@ -1245,7 +1245,6 @@ GridGenerator::create_union_triangulation (triangulation_space, intermediate_tri
 // Create relevant union mesh dof_handler and fe objects
 
 DoFHandler<dim> dof_handler_space_union (union_triangulation); FE_Q<dim> fe_space_union (space_degree); dof_handler_space_union.distribute_dofs (fe_space_union);
-DoFHandler<dim> dof_handler_union (union_triangulation); FESystem<dim> fe_union (fe_space_union, time_degree + 1); dof_handler_union.distribute_dofs (fe_union);
 
 FEValues<dim> fe_values_space_union (fe_space_union, quadrature_formula_space, update_values | update_hessians | update_quadrature_points);
 FEFaceValues<dim> fe_values_space_union_face (fe_space_union, quadrature_formula_space_face, update_gradients);
@@ -1255,17 +1254,12 @@ FESubfaceValues<dim> fe_values_space_union_subface (fe_space_union, quadrature_f
 const unsigned int no_of_union_space_dofs = dof_handler_space_union.n_dofs ();
 const unsigned int no_of_union_cells = union_triangulation.n_active_cells ();
 
-AffineConstraints<double> spatial_union_constraints, union_constraints;
+AffineConstraints<double> spatial_union_constraints;
 
 spatial_union_constraints.clear ();
 DoFTools::make_hanging_node_constraints (dof_handler_space_union, spatial_union_constraints);
 DoFTools::make_zero_boundary_constraints (dof_handler_space_union, spatial_union_constraints);
 spatial_union_constraints.close ();
-
-union_constraints.clear ();
-DoFTools::make_hanging_node_constraints (dof_handler_union, union_constraints);
-DoFTools::make_zero_boundary_constraints (dof_handler_union, union_constraints);
-union_constraints.close ();
 
 BlockVector<double> solution_union (time_degree + 1);
 BlockVector<double> old_solution_union (time_degree + 1);
@@ -1317,21 +1311,20 @@ if (time_degree > 0)
 	        }
 }
 
-typename DoFHandler<dim>::active_cell_iterator union_cell = dof_handler_union.begin_active (), final_cell = dof_handler_union.end ();
-typename DoFHandler<dim>::active_cell_iterator union_space_cell = dof_handler_space_union.begin_active ();
+typename DoFHandler<dim>::active_cell_iterator union_space_cell = dof_handler_space_union.begin_active (), final_union_space_cell = dof_handler_space_union.end ();
 
 double h = 0; double h_min = GridTools::minimal_cell_diameter (union_triangulation); double ell_h = log(2 + 1/h_min); double C_cell = 0; double C_edge = 0;
 etaS = 0; double space_estimator_jump_value = 0; double jump_value = 0; double nonlinearity_value = 0;
 if (output_refinement_vector == true) {refinement_vector = 0;}
 
-    for (; union_cell != final_cell; ++union_cell, ++union_space_cell)
+    for (; union_space_cell != final_union_space_cell; ++union_space_cell)
     {
     estimator_values = 0; derivative_estimator_values = 0;
     fe_values_space_union.reinit (union_space_cell);
     union_space_cell->get_dof_indices (local_dof_indices_space);
 
-    const unsigned int cell_no = union_cell->active_cell_index ();   
-    h = union_cell->diameter(); C_cell = fmin(1/a, h*h*ell_h/a); C_edge = fmin(1, h*ell_h);
+    const unsigned int cell_no = union_space_cell->active_cell_index ();   
+    h = union_space_cell->diameter(); C_cell = fmin(1/a, h*h*ell_h/a); C_edge = fmin(1, h*ell_h);
 
     switch(time_degree)
     {	
@@ -1383,13 +1376,12 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
   
         if (time_degree > 0 || space_degree > 1)
         {
-            for (unsigned int i = 0; i < dofs_per_cell; ++i)
-            {
-            const unsigned int comp_s_i = fe_union.system_to_component_index(i).second; const unsigned int comp_t_i = fe_union.system_to_component_index(i).first;
-
-            if (time_degree > 0) {space_estimator_jump_value += old_solution_union.block(comp_t_i)(local_dof_indices_space[comp_s_i])*fe_values_space_union.shape_value(comp_s_i, q_space)*old_fe_values_time.shape_grad(comp_t_i, no_q_time - 1)[0];}
-	        if (space_degree > 1) {space_estimator_jump_value -= old_solution_union.block(comp_t_i)(local_dof_indices_space[comp_s_i])*a*trace(fe_values_space_union.shape_hessian(comp_s_i, q_space))*old_fe_values_time.shape_value(comp_t_i, no_q_time - 1);}
-            }
+            for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+                for (unsigned int r = 0; r < time_degree + 1; ++r)
+                {
+                if (time_degree > 0) {space_estimator_jump_value += old_solution_union.block(r)(local_dof_indices_space[i])*fe_values_space_union.shape_value(i, q_space)*old_fe_values_time.shape_grad(r, no_q_time - 1)[0];}
+	            if (space_degree > 1) {space_estimator_jump_value -= old_solution_union.block(r)(local_dof_indices_space[i])*a*trace(fe_values_space_union.shape_hessian(i, q_space))*old_fe_values_time.shape_value(r, no_q_time - 1);}
+                }
         }
 
         switch(time_degree) {case 0: for (unsigned int q_time = 0; q_time < no_q_time; ++q_time) {L2_projection_f_values[q_time] = solution_values(q_space)*solution_values(q_space);} break;
@@ -1413,12 +1405,9 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
         solution_second_time_derivative_values = 0;
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-   	            for (unsigned int i = 0; i < dofs_per_cell; ++i)
-                {
-                const unsigned int comp_s_i = fe_union.system_to_component_index(i).second; const unsigned int comp_t_i = fe_union.system_to_component_index(i).first;
-
-   	            solution_second_time_derivative_values(q_time) += solution_union.block(comp_t_i)(local_dof_indices_space[comp_s_i])*fe_values_space_union.shape_value(comp_s_i, q_space)*fe_values_time.shape_hessian(comp_t_i, q_time)[0][0];
-		        }
+   	            for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+                    for (unsigned int r = 0; r < time_degree + 1; ++r)
+   	                solution_second_time_derivative_values(q_time) += solution_union.block(r)(local_dof_indices_space[i])*fe_values_space_union.shape_value(i, q_space)*fe_values_time.shape_hessian(r, q_time)[0][0];
         }
 
         jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
@@ -1767,23 +1756,17 @@ GridGenerator::create_union_triangulation (triangulation_space, intermediate_tri
 // Create relevant union mesh dof_handler and fe objects
 
 DoFHandler<dim> dof_handler_space_union (union_triangulation); FE_Q<dim> fe_space_union (space_degree); dof_handler_space_union.distribute_dofs (fe_space_union);
-DoFHandler<dim> dof_handler_union (union_triangulation); FESystem<dim> fe_union (fe_space_union, time_degree + 1); dof_handler_union.distribute_dofs (fe_union);
 
 FEValues<dim> fe_values_space_union (fe_space_union, quadrature_formula_space, update_values | update_quadrature_points);
 
 const unsigned int no_of_union_space_dofs = dof_handler_space_union.n_dofs ();
 
-AffineConstraints<double> spatial_union_constraints, union_constraints;
+AffineConstraints<double> spatial_union_constraints;
 
 spatial_union_constraints.clear ();
 DoFTools::make_hanging_node_constraints (dof_handler_space_union, spatial_union_constraints);
 DoFTools::make_zero_boundary_constraints (dof_handler_space_union, spatial_union_constraints);
 spatial_union_constraints.close ();
-
-union_constraints.clear ();
-DoFTools::make_hanging_node_constraints (dof_handler_union, union_constraints);
-DoFTools::make_zero_boundary_constraints (dof_handler_union, union_constraints);
-union_constraints.close ();
 
 // Interpolate all current vectors to the union mesh
 
@@ -1809,14 +1792,13 @@ VectorTools::interpolate_to_different_mesh (old_old_dof_handler_space, old_old_s
     VectorTools::interpolate_to_different_mesh (dof_handler_space, solution.block(r), dof_handler_space_union, spatial_union_constraints, solution_union.block(r));
     }
 
-typename DoFHandler<dim>::active_cell_iterator union_cell = dof_handler_union.begin_active (), final_cell = dof_handler_union.end ();
-typename DoFHandler<dim>::active_cell_iterator union_space_cell = dof_handler_space_union.begin_active ();
+typename DoFHandler<dim>::active_cell_iterator union_space_cell = dof_handler_space_union.begin_active (), final_union_space_cell = dof_handler_space_union.end ();
 
 etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; double nonlinearity_value = 0; double solution_time_derivative_value = 0;
 
     // Loop over all cells, compute the Linfty norm of the temporal residual of the solution at each temporal quadrature point and store it in estimator_values
 
-    for (; union_cell != final_cell; ++union_cell, ++union_space_cell)
+    for (; union_space_cell != final_union_space_cell; ++union_space_cell)
     {
     fe_values_space_union.reinit (union_space_cell);
 
@@ -1842,12 +1824,9 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; doubl
             for (unsigned int i = 0; i < time_degree + 1; ++i)
             L2_projection_f(time_degree) += old_temporal_mass_matrix_inv(time_degree, i)*L2_projection_rhs(i);
 
-	        for (unsigned int i = 0; i < dofs_per_cell; ++i)
-            {
-            const unsigned int comp_s_i = fe_union.system_to_component_index(i).second; const unsigned int comp_t_i = fe_union.system_to_component_index(i).first;
-
-            solution_time_derivative_value += old_solution_union.block(comp_t_i)(local_dof_indices_space[comp_s_i])*fe_values_space_union.shape_value(comp_s_i, q_space)*old_fe_values_time.shape_grad(comp_t_i, no_q_time - 1)[0];
-            }
+	        for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+                for (unsigned int r = 0; r < time_degree + 1; ++r)
+                solution_time_derivative_value += old_solution_union.block(r)(local_dof_indices_space[i])*fe_values_space_union.shape_value(i, q_space)*old_fe_values_time.shape_grad(r, no_q_time - 1)[0];
         }
 
         discrete_laplacian_jump_value = -L2_projection_f(time_degree) + solution_time_derivative_value + (1/dt_old)*Q_derivative_values[no_q_time-1]*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
@@ -1866,12 +1845,9 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; doubl
         temporal_mass_matrix_inv.vmult (L2_projection_f, L2_projection_rhs);
         fe_values_time.get_function_values (L2_projection_f, L2_projection_f_values);
 
-            for (unsigned int i = 0; i < dofs_per_cell; ++i)
-            {
-            const unsigned int comp_s_i = fe_union.system_to_component_index(i).second; const unsigned int comp_t_i = fe_union.system_to_component_index(i).first;
-
-            solution_time_derivative_value += solution_union.block(comp_t_i)(local_dof_indices_space[comp_s_i])*fe_values_space_union.shape_value(comp_s_i, q_space)*fe_values_time.shape_grad(comp_t_i, 0)[0];
-            }
+            for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+                for (unsigned int r = 0; r < time_degree + 1; ++r)
+                solution_time_derivative_value += solution_union.block(r)(local_dof_indices_space[i])*fe_values_space_union.shape_value(i, q_space)*fe_values_time.shape_grad(r, 0)[0];
         }
 
         jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
