@@ -848,7 +848,6 @@ FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | up
 FEValues<1> old_fe_values_time (old_fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
 
 const unsigned int no_q_space = quadrature_formula_space.size ();
-const unsigned int dofs_per_cell = fe.dofs_per_cell;
 const unsigned int dofs_per_cell_space = fe_space.dofs_per_cell;
 
 FullMatrix<double> temporal_mass_matrix_inv (time_degree + 1, time_degree + 1);
@@ -1008,13 +1007,12 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
   
         if (time_degree > 0 || space_degree > 1)
         {
-            for (unsigned int i = 0; i < dofs_per_cell; ++i)
-            {
-            const unsigned int comp_s_i = fe.system_to_component_index(i).second; const unsigned int comp_t_i = fe.system_to_component_index(i).first;
-
-            if (time_degree > 0) {space_estimator_jump_value += old_solution.block(comp_t_i)(local_dof_indices_space[comp_s_i])*fe_values_space.shape_value(comp_s_i, q_space)*old_fe_values_time.shape_grad(comp_t_i, no_q_time - 1)[0];}
-	        if (space_degree > 1) {space_estimator_jump_value -= old_solution.block(comp_t_i)(local_dof_indices_space[comp_s_i])*a*trace(fe_values_space.shape_hessian(comp_s_i, q_space))*old_fe_values_time.shape_value(comp_t_i, no_q_time - 1);}
-            }
+            for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+                for (unsigned int r = 0; r < time_degree + 1; ++r)
+                {
+                if (time_degree > 0) {space_estimator_jump_value += old_solution.block(r)(local_dof_indices_space[i])*fe_values_space.shape_value(i,q_space)*old_fe_values_time.shape_grad(r,no_q_time - 1)[0];}
+	            if (space_degree > 1) {space_estimator_jump_value -= old_solution.block(r)(local_dof_indices_space[i])*a*trace(fe_values_space.shape_hessian(i,q_space))*old_fe_values_time.shape_value(r,no_q_time - 1);}
+                }
         }
         }
         else
@@ -1043,12 +1041,9 @@ if (output_refinement_vector == true) {refinement_vector = 0;}
         solution_second_time_derivative_values = 0;
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-   	            for (unsigned int i = 0; i < dofs_per_cell; ++i)
-                {
-                const unsigned int comp_s_i = fe.system_to_component_index(i).second; const unsigned int comp_t_i = fe.system_to_component_index(i).first;
-
-   	            solution_second_time_derivative_values(q_time) += solution.block(comp_t_i)(local_dof_indices_space[comp_s_i])*fe_values_space.shape_value(comp_s_i, q_space)*fe_values_time.shape_hessian(comp_t_i, q_time)[0][0];
-		        }
+   	            for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+                    for (unsigned int r = 0; r < time_degree + 1; ++r)
+   	                solution_second_time_derivative_values(q_time) += solution.block(r)(local_dof_indices_space[i])*fe_values_space.shape_value(i,q_space)*fe_values_time.shape_hessian(r,q_time)[0][0];
         }
 
         jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
@@ -1614,7 +1609,6 @@ FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | up
 FEValues<1> old_fe_values_time (old_fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
 
 const unsigned int no_q_space = quadrature_formula_space.size();
-const unsigned int dofs_per_cell = fe.dofs_per_cell;
 const unsigned int dofs_per_cell_space = fe_space.dofs_per_cell;
 
 FullMatrix<double> temporal_mass_matrix_inv (time_degree + 1, time_degree + 1);
@@ -1684,12 +1678,9 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; doubl
             for (unsigned int i = 0; i < time_degree + 1; ++i)
             L2_projection_f(time_degree) += old_temporal_mass_matrix_inv(time_degree, i)*L2_projection_rhs(i);
 
-	        for (unsigned int i = 0; i < dofs_per_cell; ++i)
-            {
-            const unsigned int comp_s_i = fe.system_to_component_index(i).second; const unsigned int comp_t_i = fe.system_to_component_index(i).first;
-
-            solution_time_derivative_value += old_solution.block(comp_t_i)(local_dof_indices_space[comp_s_i])*fe_values_space.shape_value(comp_s_i, q_space)*old_fe_values_time.shape_grad(comp_t_i, no_q_time - 1)[0];
-            }
+	        for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+                for (unsigned int r = 0; r < time_degree + 1; ++r)
+                solution_time_derivative_value += old_solution.block(r)(local_dof_indices_space[i])*fe_values_space.shape_value(i,q_space)*old_fe_values_time.shape_grad(r,no_q_time - 1)[0];
         }
 
         discrete_laplacian_jump_value = -L2_projection_f(time_degree) + solution_time_derivative_value + (1/dt_old)*Q_derivative_values[no_q_time-1]*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
@@ -1713,12 +1704,9 @@ etaT = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; doubl
         temporal_mass_matrix_inv.vmult (L2_projection_f, L2_projection_rhs);
         fe_values_time.get_function_values (L2_projection_f, L2_projection_f_values);
 
-            for (unsigned int i = 0; i < dofs_per_cell; ++i)
-            {
-            const unsigned int comp_s_i = fe.system_to_component_index(i).second; const unsigned int comp_t_i = fe.system_to_component_index(i).first;
-
-            solution_time_derivative_value += solution.block(comp_t_i)(local_dof_indices_space[comp_s_i])*fe_values_space.shape_value(comp_s_i, q_space)*fe_values_time.shape_grad(comp_t_i, 0)[0];
-            }
+            for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+                for (unsigned int r = 0; r < time_degree + 1; ++r)
+                solution_time_derivative_value += solution.block(r)(local_dof_indices_space[i])*fe_values_space.shape_value(i,q_space)*fe_values_time.shape_grad(r,0)[0];
         }
 
         jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
