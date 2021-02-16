@@ -2014,7 +2014,7 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
     else
     {
     assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1, maximum_nonlinear_iterates, nonlinear_residual_threshold); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 21, true); // Compute the space estimator
+    compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, true); // Compute the space estimator
     compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
 
     refine_mesh ();
