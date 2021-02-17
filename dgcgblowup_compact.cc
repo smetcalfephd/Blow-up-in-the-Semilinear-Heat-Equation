@@ -39,8 +39,8 @@ const unsigned int no_of_points = points.size();
 	{
 	const double x = points[point](0); const double y = points[point](1);
 
-    values[point] = 10*(x*x + y*y)*exp(-0.5*(x*x + y*y));
-    //values[point] = 10*exp(-2*(x*x + y*y));
+    values[point] = 10*exp(-2*(x*x + y*y));
+    // values[point] = 10*(x*x + y*y)*exp(-0.5*(x*x + y*y));
 	}
 }
 
@@ -61,8 +61,8 @@ const unsigned int no_of_points = points.size();
 	{
 	const double x = points[point](0); const double y = points[point](1);
 
-    values[point] = 10*(x*x*x*x + y*y*y*y + 2*x*x*y*y - 6*x*x - 6*y*y + 4)*exp(-0.5*(x*x + y*y));
-    //values[point] = 80*(2*(x*x + y*y) - 1)*exp(-2*(x*x + y*y));
+    values[point] = 80*(2*(x*x + y*y) - 1)*exp(-2*(x*x + y*y));
+    // values[point] = 10*(x*x*x*x + y*y*y*y + 2*x*x*y*y - 6*x*x - 6*y*y + 4)*exp(-0.5*(x*x + y*y));
 	}
 }
 
@@ -77,7 +77,7 @@ public:
     const double a = 1; // Diffusion coefficient
 
     // Discretisation parameters
-    const unsigned int space_degree = 13; // Spatial polynomial degree
+    const unsigned int space_degree = 7; // Spatial polynomial degree
 	const unsigned int time_degree = 1; // Temporal polynomial degree
     const unsigned int refine_every_n_timesteps = 2; // Potentially refine the mesh every n timesteps
     unsigned int timestep_number = 0; // The current timestep
@@ -178,7 +178,6 @@ dof_handler_space.distribute_dofs (fe_space); old_dof_handler_space.distribute_d
 dof_handler_time.distribute_dofs (fe_time); old_dof_handler_time.distribute_dofs (old_fe_time);
 dof_handler.distribute_dofs (fe); 
 
-const unsigned int no_of_dofs = dof_handler.n_dofs ();
 const unsigned int no_of_space_dofs = dof_handler_space.n_dofs ();
 
 constraints.clear ();
@@ -186,11 +185,11 @@ DoFTools::make_hanging_node_constraints (dof_handler, constraints);
 DoFTools::make_zero_boundary_constraints (dof_handler, constraints);
 constraints.close ();
 
-DynamicSparsityPattern dsp (no_of_dofs);
+DynamicSparsityPattern dsp (dof_handler.n_dofs());
 DoFTools::make_sparsity_pattern (dof_handler, dsp, constraints, false);
 sparsity_pattern.copy_from (dsp);
 
-solution.reinit (time_degree + 1);  old_solution.reinit (time_degree + 1);
+solution.reinit (time_degree + 1); old_solution.reinit (time_degree + 1);
 
     for (unsigned int r = 0; r < time_degree + 1; ++r)
     {
@@ -244,10 +243,8 @@ MatrixCreator::create_mass_matrix (dof_handler_space, QGauss<dim>(space_degree +
 
 SparseILU<double> preconditioner; preconditioner.initialize (mass_matrix);
 
-SolverBicgstab<>::AdditionalData data; data.exact_residual = false;
-
 SolverControl solver_control (10000, 1e-20, false, false);
-SolverBicgstab<> solver (solver_control, data);
+SolverBicgstab<> solver (solver_control);
 
     for (unsigned int r = 0; r < time_degree + 1; ++r)
     {
@@ -415,8 +412,7 @@ DoFTools::make_zero_boundary_constraints (dof_handler_space, spatial_constraints
 spatial_constraints.close ();
 
 DynamicSparsityPattern dsp (no_of_space_dofs);
-DoFTools::make_sparsity_pattern (dof_handler_space, dsp);
-spatial_constraints.condense (dsp);
+DoFTools::make_sparsity_pattern (dof_handler_space, dsp, spatial_constraints, false);
 spatial_sparsity_pattern.copy_from (dsp);
 
 SparseMatrix<double> laplace_matrix; laplace_matrix.reinit (spatial_sparsity_pattern);
@@ -463,10 +459,8 @@ double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0;
     previous_cell_size = cell_size;
     }
 
-SolverBicgstab<>::AdditionalData data; data.exact_residual = false;
-
 SolverControl solver_control (10000, 1e-20, false, false);
-SolverBicgstab<> solver (solver_control, data);
+SolverBicgstab<> solver (solver_control);
 
 SparseILU<double> preconditioner; preconditioner.initialize (laplace_matrix);
 solver.solve (laplace_matrix, projection, right_hand_side, preconditioner);
@@ -612,10 +606,8 @@ unsigned int iteration_number = 1; double residual = 0; double max = old_solutio
 
     // Solve the matrix-vector system
 
-    SolverBicgstab<>::AdditionalData data; data.exact_residual = false;
-
     SolverControl solver_control (10000, 0.001*max*rel_tol, false, false);
-    SolverBicgstab<> solver (solver_control, data);
+    SolverBicgstab<> solver (solver_control);
 
     if (nonlinear_solver == "newton" || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 0) || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 1)) {preconditioner.initialize (system_matrix);}
 
@@ -637,7 +629,7 @@ if (iteration_number == max_iterations) {deallog << "...converged in the maximum
 
 template <int dim> void dGcGblowup<dim>::refine_initial_mesh ()
 {
-while (etaS > spatial_refinement_threshold)
+while (etaS > spatial_coarsening_threshold)
 {
 dof_handler_space.distribute_dofs (fe_space);
 
@@ -652,9 +644,9 @@ VectorTools::integrate_difference (dof_handler_space, projection, initialvalues<
 etaS = error.linfty_norm ();
 
 deallog << "Initial Linfty Error: " << etaS << std::endl << std::endl;
-if (etaS > spatial_refinement_threshold) {deallog << "Initial Linfty error is too large. Refining the mesh..." << std::endl;} else {deallog << "Initial Linfty error is sufficiently small. Proceeding to the initial setup step."<< std::endl;}
+if (etaS > spatial_coarsening_threshold) {deallog << "Initial Linfty error is too large. Refining the mesh..." << std::endl;} else {deallog << "Initial Linfty error is sufficiently small. Proceeding to the initial setup step."<< std::endl;}
 
-GridRefinement::refine (triangulation_space, error, spatial_refinement_threshold);
+GridRefinement::refine (triangulation_space, error, spatial_coarsening_threshold);
 triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
 }	
 }
@@ -1405,8 +1397,8 @@ template <int dim> void dGcGblowup<dim>::run ()
 deallog << "Spatial Polynomial Degree: " << space_degree << std::endl;
 deallog << "Temporal Polynomial Degree: " << time_degree << std::endl;
 
-//GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.refine_global (2);
-GridGenerator::hyper_cube (triangulation_space, -9, 9); triangulation_space.refine_global (2);
+GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.refine_global (2);
+// GridGenerator::hyper_cube (triangulation_space, -9, 9); triangulation_space.refine_global (2);
 
 // Refine the mesh based on the initial condition
 deallog << std::endl << "~~Refining the mesh based on the initial condition~~" << std::endl;
