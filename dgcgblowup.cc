@@ -38,8 +38,8 @@ const unsigned int no_of_points = points.size();
 	{
 	const double x = points[point](0); const double y = points[point](1);
 
-    values[point] = 10*exp(-2*(x*x + y*y));
-    // values[point] = 10*(x*x + y*y)*exp(-0.5*(x*x + y*y));
+    //values[point] = 10*exp(-2*(x*x + y*y));
+    values[point] = 10*(x*x + y*y)*exp(-0.5*(x*x + y*y));
 	}
 }
 
@@ -60,8 +60,8 @@ const unsigned int no_of_points = points.size();
 	{
 	const double x = points[point](0); const double y = points[point](1);
 
-    values[point] = 80*(2*(x*x + y*y) - 1)*exp(-2*(x*x + y*y));
-    // values[point] = 10*(x*x*x*x + y*y*y*y + 2*x*x*y*y - 6*x*x - 6*y*y + 4)*exp(-0.5*(x*x + y*y));
+    //values[point] = 80*(2*(x*x + y*y) - 1)*exp(-2*(x*x + y*y));
+    values[point] = 10*(x*x*x*x + y*y*y*y + 2*x*x*y*y - 6*x*x - 6*y*y + 4)*exp(-0.5*(x*x + y*y));
 	}
 }
 
@@ -85,9 +85,9 @@ public:
 	double dt_old = dt; // The timestep length on the last time interval
 
 	// Error estimator thresholds
-    double spatial_refinement_threshold = 0.01; // The spatial refinement threshold
+    double spatial_refinement_threshold = 0.00001; // The spatial refinement threshold
     double spatial_coarsening_threshold = 0.1*std::pow(2.0, -1.0*space_degree)*spatial_refinement_threshold; // The spatial coarsening threshold
-	double temporal_refinement_threshold = 0.01; // The temporal refinement threshold
+	double temporal_refinement_threshold = 0.000001; // The temporal refinement threshold
 	double delta_residual_threshold = 1e-4; // The threshold for the delta equation residual above which we consider the delta equation as having no root
 
     // Nonlinear solver parameters
@@ -1958,8 +1958,8 @@ void dGcGblowup<dim>::run ()
 deallog << "Spatial Polynomial Degree: " << space_degree << std::endl;
 deallog << "Temporal Polynomial Degree: " << time_degree << std::endl;
 
-GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.refine_global (2);
-// GridGenerator::hyper_cube (triangulation_space, -10, 10); triangulation_space.refine_global (2);
+//GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.refine_global (2);
+GridGenerator::hyper_cube (triangulation_space, -10, 10); triangulation_space.refine_global (2);
 
 // Refine the mesh based on the initial condition
 deallog << std::endl << "~~Refining the mesh based on the initial condition~~" << std::endl;
