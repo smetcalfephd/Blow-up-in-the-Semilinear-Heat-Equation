@@ -76,7 +76,7 @@ public:
     const double a = 1; // Diffusion coefficient
 
     // Discretisation parameters
-    const unsigned int space_degree = 7; // Spatial polynomial degree
+    const unsigned int space_degree = 8; // Spatial polynomial degree
 	const unsigned int time_degree = 1; // Temporal polynomial degree
     const unsigned int refine_every_n_timesteps = 2; // Potentially refine the mesh every n timesteps
     unsigned int timestep_number = 0; // The current timestep
@@ -455,9 +455,9 @@ Vector<double> right_hand_side (no_of_dofs);
 Vector<double> static_right_hand_side (no_of_dofs);
 Vector<double> residual_vector (no_of_dofs);
 Vector<double> solution_values (no_q_space*no_q_time);
-Vector<double> nonlinearity_values (no_q_space*no_q_time);
 Vector<double> local_right_hand_side (dofs_per_cell);
 std::vector<double> fe_values_spacetime (dofs_per_cell*no_q_space*no_q_time);
+std::vector<double> nonlinearity_values (no_q_space*no_q_time);
 std::vector<double> old_solution_plus_values (no_q_space);
 std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
@@ -520,7 +520,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = old_solutio
             for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                 for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
                 {
-                nonlinearity_values(q_space + q_time*no_q_space) = solution_values(q_space + q_time*no_q_space)*solution_values(q_space + q_time*no_q_space)*fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
+                nonlinearity_values[q_space + q_time*no_q_space] = solution_values(q_space + q_time*no_q_space)*solution_values(q_space + q_time*no_q_space)*fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
                 if (nonlinear_solver == "newton" || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 0)) {solution_values(q_space + q_time*no_q_space) *= fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);}
                 }
 
@@ -565,7 +565,7 @@ unsigned int iteration_number = 1; double residual = 0; double max = old_solutio
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
                 for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-                    local_right_hand_side(k) += nonlinearity_values(q_space + q_time*no_q_space)*fe_values_spacetime[k + q_space*dofs_per_cell + q_time*dofs_per_cell*no_q_space];
+                    local_right_hand_side(k) += nonlinearity_values[q_space + q_time*no_q_space]*fe_values_spacetime[k + q_space*dofs_per_cell + q_time*dofs_per_cell*no_q_space];
        
         if (nonlinear_solver == "newton" || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 0)) {local_right_hand_side *= -1;}
 
@@ -1959,7 +1959,7 @@ deallog << "Spatial Polynomial Degree: " << space_degree << std::endl;
 deallog << "Temporal Polynomial Degree: " << time_degree << std::endl;
 
 GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.refine_global (2);
-// GridGenerator::hyper_cube (triangulation_space, -9, 9); triangulation_space.refine_global (2);
+// GridGenerator::hyper_cube (triangulation_space, -10, 10); triangulation_space.refine_global (2);
 
 // Refine the mesh based on the initial condition
 deallog << std::endl << "~~Refining the mesh based on the initial condition~~" << std::endl;
