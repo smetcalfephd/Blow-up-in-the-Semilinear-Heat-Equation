@@ -255,7 +255,7 @@ FullMatrix<double> temporal_mass_matrix (time_degree + 1, time_degree + 1);
 FullMatrix<double> time_derivative_matrix (time_degree + 1, time_degree + 1);
 std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
-create_temporal_mass_matrix (fe_time, dof_handler_time, temporal_mass_matrix);
+create_temporal_mass_matrix (fe_time, dof_handler_time, temporal_mass_matrix); 
 if (time_degree > 0) {create_time_derivative_matrix (time_derivative_matrix);}
 
 typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active (), final_space_cell = dof_handler_space.end ();
@@ -339,9 +339,13 @@ FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | up
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active (); fe_values_time.reinit (time_cell);
 
     for (unsigned int r = 0; r < time_degree + 1; ++r)
-        for (unsigned int s = 0; s < time_degree + 1; ++s)
-            for (unsigned int q_time = 0; q_time < time_degree + 1; ++q_time)
-	        time_derivative_matrix(r,s) += fe_values_time.shape_value(r,q_time)*fe_values_time.shape_grad(s,q_time)[0]*fe_values_time.JxW(q_time);
+        for (unsigned int q_time = 0; q_time < time_degree + 1; ++q_time)
+        {
+        const double value = fe_values_time.shape_value(r,q_time)*fe_values_time.JxW(q_time);
+
+            for (unsigned int s = 0; s < time_degree + 1; ++s)
+            time_derivative_matrix(r,s) += value*fe_values_time.shape_grad(s,q_time)[0];
+        }
 }
 
 // Computes the "energy projection" of the initial condition u_0 to the finite element function U_0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
