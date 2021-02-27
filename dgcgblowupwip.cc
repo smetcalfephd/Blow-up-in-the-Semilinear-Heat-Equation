@@ -120,7 +120,7 @@ private:
 	void create_static_system_matrix (); // Creates the static part of the system matrix, i.e., that which does not change between nonlinear iterations
     void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &temporal_mass_matrix) const; // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
 	void create_time_derivative_matrix (FullMatrix<double> &time_derivative_matrix) const; // Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
-    void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const; // Computes the "energy projection" of the initial condition u_0 to the finite element function U_0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
+    void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const; // Computes the "energy projection" of the initial condition u0 to the finite element function U0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
 	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const unsigned int &max_iterations, const double &rel_tol); // Assembles the right-hand side vector and solves the nonlinear system via iteration until the difference in solutions is below ||U||*rel_tol
     void refine_initial_mesh (); // Refines the initial mesh and recomputes the energy projection of the initial condition until ||u_0 - U_0|| < spatial_coarsening_threshold
     void refine_mesh (); // Refines all cells with refinement_vector(cell_no) > spatial_refinement_threshold and coarsens all cells with refinement_vector(cell_no) < spatial_coarsening_threshold
@@ -348,7 +348,7 @@ typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_
         }
 }
 
-// Computes the "energy projection" of the initial condition u_0 to the finite element function U_0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
+// Computes the "energy projection" of the initial condition u0 to the finite element function U0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
 
 template <int dim> void dGcGblowup<dim>::energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const
 {
@@ -358,37 +358,34 @@ FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values
 
 const unsigned int no_q_space = quadrature_formula_space.size ();
 const unsigned int no_of_space_dofs = dof_handler_space.n_dofs ();
-const unsigned int dofs_per_cell_space = fe_space.dofs_per_cell;
+const unsigned int dofs_per_cell = fe_space.dofs_per_cell;
 
-AffineConstraints<double> spatial_constraints; SparsityPattern spatial_sparsity_pattern;
+AffineConstraints<double> constraints; SparsityPattern sparsity_pattern;
 
-spatial_constraints.clear ();
-DoFTools::make_hanging_node_constraints (dof_handler_space, spatial_constraints);
-DoFTools::make_zero_boundary_constraints (dof_handler_space, spatial_constraints);
-spatial_constraints.close ();
+constraints.clear ();
+DoFTools::make_hanging_node_constraints (dof_handler_space, constraints);
+DoFTools::make_zero_boundary_constraints (dof_handler_space, constraints);
+constraints.close ();
 
 DynamicSparsityPattern dsp (no_of_space_dofs);
-DoFTools::make_sparsity_pattern (dof_handler_space, dsp, spatial_constraints, false);
-spatial_sparsity_pattern.copy_from (dsp);
+DoFTools::make_sparsity_pattern (dof_handler_space, dsp, constraints, false);
+sparsity_pattern.copy_from (dsp);
 
-SparseMatrix<double> laplace_matrix; laplace_matrix.reinit (spatial_sparsity_pattern);
-FullMatrix<double> local_laplace_matrix (dofs_per_cell_space, dofs_per_cell_space);
+SparseMatrix<double> laplace_matrix; laplace_matrix.reinit (sparsity_pattern);
+FullMatrix<double> local_laplace_matrix (dofs_per_cell, dofs_per_cell);
 Vector<double> right_hand_side (no_of_space_dofs);
-Vector<double> local_right_hand_side (dofs_per_cell_space);
+Vector<double> local_right_hand_side (dofs_per_cell);
 std::vector<double> laplacian_values (no_q_space);
-std::vector<types::global_dof_index> local_dof_indices_space (dofs_per_cell_space);
+std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
-typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active (), final_space_cell = dof_handler_space.end ();
+typename DoFHandler<dim>::active_cell_iterator cell = dof_handler_space.begin_active (), final_cell = dof_handler_space.end ();
 
 double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0;
 
-    for (; space_cell != final_space_cell; ++space_cell)
+    for (; cell != final_cell; ++cell)
     {
-    fe_values_space.reinit (space_cell);
-    space_cell->get_dof_indices (local_dof_indices_space);
-    cell_size = space_cell->measure ();
-
-    cell_size_check = fabs(cell_size - previous_cell_size);
+    fe_values_space.reinit (cell); cell->get_dof_indices (local_dof_indices); 
+    cell_size = cell->measure (); cell_size_check = fabs(cell_size - previous_cell_size);
 
     laplacian_function.value_list (fe_values_space.get_quadrature_points(), laplacian_values);
 
@@ -396,7 +393,7 @@ double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0;
     {
     local_laplace_matrix = 0;
 
-        for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+        for (unsigned int i = 0; i < dofs_per_cell; ++i)
             for (unsigned int j = 0; j < i + 1; ++j)
             {
                 for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
@@ -406,11 +403,15 @@ double cell_size = 0; double previous_cell_size = 0; double cell_size_check = 0;
             }
     }
 
-        for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
-            for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-            local_right_hand_side(i) -= laplacian_values[q_space]*fe_values_space.shape_value(i,q_space)*fe_values_space.JxW(q_space);
+        for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
+        {
+        const double value = laplacian_values[q_space]*fe_values_space.JxW(q_space);
+        
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            local_right_hand_side(i) -= value*fe_values_space.shape_value(i,q_space);
+        }
 
-    spatial_constraints.distribute_local_to_global (local_laplace_matrix, local_right_hand_side, local_dof_indices_space, laplace_matrix, right_hand_side); local_right_hand_side = 0;
+    constraints.distribute_local_to_global (local_laplace_matrix, local_right_hand_side, local_dof_indices, laplace_matrix, right_hand_side); local_right_hand_side = 0;
 
     previous_cell_size = cell_size;
     }
@@ -421,7 +422,7 @@ SolverBicgstab<> solver (solver_control);
 SparseILU<double> preconditioner; preconditioner.initialize (laplace_matrix);
 solver.solve (laplace_matrix, projection, right_hand_side, preconditioner);
 
-spatial_constraints.distribute (projection);
+constraints.distribute (projection);
 }
 
 // Assembles the right-hand side vector and solves the nonlinear system via iteration until the difference in solutions is below ||U||*rel_tol
