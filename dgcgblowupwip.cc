@@ -121,7 +121,7 @@ private:
     void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &temporal_mass_matrix) const; // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
 	void create_time_derivative_matrix (FullMatrix<double> &time_derivative_matrix) const; // Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
     void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const; // Computes the "energy projection" of the initial condition u0 to the finite element function U0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
-	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time); // Assembles the right-hand side vector and solves the nonlinear system via iteration until the difference in solutions is below ||U||*rel_tol
+	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time); // Assembles the right-hand side vector and solves the nonlinear system via iteration until the difference in solutions is below ||U||*nonlinear_residual_threshold
     void refine_initial_mesh (); // Refines the initial mesh and recomputes the energy projection of the initial condition until ||u_0 - U_0|| < spatial_coarsening_threshold
     void refine_mesh (); // Refines all cells with refinement_vector(cell_no) > spatial_refinement_threshold and coarsens all cells with refinement_vector(cell_no) < spatial_coarsening_threshold
     void prepare_for_next_time_step (); // Prepares the vectors, triangulations and dof_handlers for the next time step by setting them to previous values
@@ -425,7 +425,7 @@ solver.solve (laplace_matrix, projection, right_hand_side, preconditioner);
 constraints.distribute (projection);
 }
 
-// Assembles the right-hand side vector and solves the nonlinear system via iteration until the difference in solutions is below ||U||*rel_tol
+// Assembles the right-hand side vector and solves the nonlinear system via iteration until the difference in solutions is below ||U||*nonlinear_residual_threshold
 
 template <int dim> void dGcGblowup<dim>::assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time)
 {
@@ -438,8 +438,8 @@ const QGauss<dim> quadrature_formula_space (no_q_space_x); const QGauss<1> quadr
 FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values | update_quadrature_points | update_JxW_values);
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_JxW_values);
 
-const unsigned int no_of_dofs = dof_handler.n_dofs();
-const unsigned int no_q_space = quadrature_formula_space.size();
+const unsigned int no_of_dofs = dof_handler.n_dofs ();
+const unsigned int no_q_space = quadrature_formula_space.size ();
 const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
 FullMatrix<double> local_system_matrix (dofs_per_cell, dofs_per_cell);
@@ -454,7 +454,7 @@ std::vector<double> nonlinearity_values (no_q_space*no_q_time);
 std::vector<double> old_solution_plus_values (no_q_space);
 std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
-Functions::FEFieldFunction<dim> old_solution_plus_function (old_dof_handler_space, old_solution.block(time_degree));
+const Functions::FEFieldFunction<dim> old_solution_plus_function (old_dof_handler_space, old_solution.block(time_degree));
 
 if (mesh_change == false) // Extend the numerical solution at final time on the previous interval to a constant-in-time function for use as an initial guess in the nonlinear iteration
 {
@@ -495,7 +495,7 @@ unsigned int iteration_number = 1; double residual = 0; const double max = old_s
         {
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
             {
-            unsigned int comp_s_k = fe.system_to_component_index(k).second; unsigned int comp_t_k = fe.system_to_component_index(k).first;
+            const unsigned int comp_s_k = fe.system_to_component_index(k).second; const unsigned int comp_t_k = fe.system_to_component_index(k).first;
 
                 for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
@@ -503,14 +503,12 @@ unsigned int iteration_number = 1; double residual = 0; const double max = old_s
             }
         }
 
-            for (unsigned int k = 0; k < dofs_per_cell; ++k)
-                for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
-                    for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-                    solution_values(q_space + q_time*no_q_space) += temporary_solution(local_dof_indices[k])*fe_values_spacetime[k + q_space*dofs_per_cell + q_time*dofs_per_cell*no_q_space];
-        
             for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                 for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
                 {
+                    for (unsigned int k = 0; k < dofs_per_cell; ++k)
+                    solution_values(q_space + q_time*no_q_space) += temporary_solution(local_dof_indices[k])*fe_values_spacetime[k + q_space*dofs_per_cell + q_time*dofs_per_cell*no_q_space];
+
                 nonlinearity_values[q_space + q_time*no_q_space] = solution_values(q_space + q_time*no_q_space)*solution_values(q_space + q_time*no_q_space)*fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);
                 if (nonlinear_solver == "newton" || (nonlinear_solver == "hybrid" && iteration_number % newton_every_x_steps == 0)) {solution_values(q_space + q_time*no_q_space) *= fe_values_space.JxW(q_space)*fe_values_time.JxW(q_time);}
                 }
@@ -539,10 +537,12 @@ unsigned int iteration_number = 1; double residual = 0; const double max = old_s
         {
             for (unsigned int k = 0; k < dofs_per_cell; ++k)
             {
-            const unsigned int comp_s_k = fe.system_to_component_index(k).second; const unsigned int comp_t_k = fe.system_to_component_index(k).first;
+            const unsigned int comp_t_k = fe.system_to_component_index(k).first;
 
             if (comp_t_k == 0)
             {
+            const unsigned int comp_s_k = fe.system_to_component_index(k).second;
+
                 for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
                 local_right_hand_side(k) += old_solution_plus_values[q_space]*fe_values_space.shape_value(comp_s_k,q_space)*fe_values_space.JxW(q_space);
             }
