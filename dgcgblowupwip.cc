@@ -94,7 +94,7 @@ public:
     const std::string nonlinear_solver = "picard"; // Choose whether the nonlinear solver uses the "picard", "newton" or "hybrid" method
     const unsigned int newton_every_x_steps = 4; // If using the hybrid method, does a Newton step every x iterations
     const unsigned int maximum_nonlinear_iterates = 35; // Maximum number of iterates the nonlinear solver will do before terminating
-    const double nonlinear_residual_threshold = 1e-13; // The nonlinear solver will continue to iterate until the difference in solutions is less than ||U||*nonlinear_residual_threshold
+    const double nonlinear_residual_threshold = 8e-15; // The nonlinear solver will continue to iterate until the difference in solutions is less than ||U||*nonlinear_residual_threshold
 
 
     // ~~INTERNAL PARAMETERS~~ -- LEAVE ALONE!!
@@ -140,9 +140,7 @@ private:
 	DoFHandler<1> dof_handler_time; DoFHandler<1> old_dof_handler_time; 
 	DoFHandler<dim> dof_handler;
 
-    FE_Q<dim> fe_space; FE_Q<dim> old_fe_space; FE_Q<dim> old_old_fe_space; 
-	FE_DGQ<1> fe_time; FE_DGQ<1> old_fe_time; 
-	FESystem<dim> fe;
+    FE_Q<dim> fe_space; FE_DGQ<1> fe_time; FESystem<dim> fe;
 
 	AffineConstraints<double> constraints;
 	SparsityPattern sparsity_pattern;
@@ -162,20 +160,16 @@ private:
 template <int dim> dGcGblowup<dim>::dGcGblowup ()
                 :
 				dof_handler_space (triangulation_space), old_dof_handler_space (old_triangulation_space), old_old_dof_handler_space (old_old_triangulation_space),
-				dof_handler_time (triangulation_time), old_dof_handler_time (old_triangulation_time),
-				dof_handler (triangulation_space),
-				fe_space (space_degree), old_fe_space (space_degree), old_old_fe_space (space_degree),
-				fe_time (time_degree), old_fe_time (time_degree),
-				fe (fe_space, time_degree + 1)
+				dof_handler_time (triangulation_time), old_dof_handler_time (old_triangulation_time), dof_handler (triangulation_space),
+			    fe_space (space_degree), fe_time (time_degree), fe (fe_space, time_degree + 1)
 {}
 
 // Initialises all vectors, distributes all degrees of freedom and computes the static part of the system matrix
 
 template <int dim> void dGcGblowup<dim>::setup_system_full ()
 {
-dof_handler_space.distribute_dofs (fe_space); old_dof_handler_space.distribute_dofs (old_fe_space); old_old_dof_handler_space.distribute_dofs (old_old_fe_space);
-dof_handler_time.distribute_dofs (fe_time); old_dof_handler_time.distribute_dofs (old_fe_time);
-dof_handler.distribute_dofs (fe); 
+dof_handler_space.distribute_dofs (fe_space); old_dof_handler_space.distribute_dofs (fe_space); old_old_dof_handler_space.distribute_dofs (fe_space);
+dof_handler_time.distribute_dofs (fe_time); old_dof_handler_time.distribute_dofs (fe_time); dof_handler.distribute_dofs (fe); 
 
 constraints.clear ();
 DoFTools::make_hanging_node_constraints (dof_handler, constraints);
@@ -668,14 +662,14 @@ template <int dim> void dGcGblowup<dim>::prepare_for_next_time_step ()
 // If the time step length has changed, set the old time step length to the current time step length and redistribute temporal dofs
 if (dt != dt_old)
 {
-dt_old = dt; old_triangulation_time.clear (); old_triangulation_time.copy_triangulation (triangulation_time); old_dof_handler_time.distribute_dofs (old_fe_time);
+dt_old = dt; old_triangulation_time.clear (); old_triangulation_time.copy_triangulation (triangulation_time); old_dof_handler_time.distribute_dofs (fe_time);
 }
 
 // If the mesh changed between old_triangulation_space and old_old_triangulation_space set old_old_triangulation_space = old_triangulation_space and redistribute dofs. Either way, also reset the relevant vectors.
 if (old_mesh_change == true)
 {
 old_old_triangulation_space.clear (); old_old_triangulation_space.copy_triangulation (old_triangulation_space);
-old_old_dof_handler_space.distribute_dofs (old_old_fe_space);
+old_old_dof_handler_space.distribute_dofs (fe_space);
 
 old_old_solution_plus.reinit (old_old_dof_handler_space.n_dofs());
 old_old_solution_plus = old_solution.block(time_degree);
@@ -689,7 +683,7 @@ old_old_solution_plus = old_solution.block(time_degree);
 if (mesh_change == true)
 {
 old_triangulation_space.clear (); old_triangulation_space.copy_triangulation (triangulation_space);
-old_dof_handler_space.distribute_dofs (old_fe_space);
+old_dof_handler_space.distribute_dofs (fe_space);
 
 old_solution.reinit (time_degree + 1);
 
@@ -806,7 +800,7 @@ template <int dim> void dGcGblowup<dim>::compute_space_estimator (const unsigned
 const QGauss<dim> quadrature_formula_space (no_q_space_x); const QGauss<dim-1> quadrature_formula_space_face (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
 
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_hessians | update_quadrature_points | update_JxW_values);
-FEValues<1> old_fe_values_time (old_fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
+FEValues<1> old_fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
 
 const unsigned int no_q_space = quadrature_formula_space.size ();
 const unsigned int dofs_per_cell_space = fe_space.dofs_per_cell;
@@ -821,7 +815,7 @@ std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell_space);
 
 create_temporal_mass_matrix (fe_time, dof_handler_time, temporal_mass_matrix_inv); temporal_mass_matrix_inv.gauss_jordan ();
 
-if (dt == dt_old) {old_temporal_mass_matrix_inv = temporal_mass_matrix_inv;} else {create_temporal_mass_matrix (old_fe_time, old_dof_handler_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();}
+if (dt == dt_old) {old_temporal_mass_matrix_inv = temporal_mass_matrix_inv;} else {create_temporal_mass_matrix (fe_time, old_dof_handler_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();}
     
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active (); typename DoFHandler<1>::active_cell_iterator old_time_cell = old_dof_handler_time.begin_active ();
 fe_values_time.reinit (time_cell); old_fe_values_time.reinit (old_time_cell);
@@ -1106,7 +1100,7 @@ template <int dim> void dGcGblowup<dim>::compute_time_estimator (const unsigned 
 const QGauss<dim> quadrature_formula_space (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
 
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_quadrature_points | update_JxW_values);
-FEValues<1> old_fe_values_time (old_fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
+FEValues<1> old_fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
 
 const unsigned int no_q_space = quadrature_formula_space.size();
 const unsigned int dofs_per_cell_space = fe_space.dofs_per_cell;
@@ -1130,7 +1124,7 @@ if (time_degree > 0)
 create_temporal_mass_matrix (fe_time, dof_handler_time, temporal_mass_matrix_inv); temporal_mass_matrix_inv.gauss_jordan ();
 
 if (dt == dt_old) {old_temporal_mass_matrix_inv = temporal_mass_matrix_inv;}
-else {create_temporal_mass_matrix (old_fe_time, old_dof_handler_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();}
+else {create_temporal_mass_matrix (fe_time, old_dof_handler_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();}
 }
 
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active(); typename DoFHandler<1>::active_cell_iterator old_time_cell = old_dof_handler_time.begin_active();
