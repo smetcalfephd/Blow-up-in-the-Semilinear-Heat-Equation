@@ -1012,12 +1012,12 @@ const double h_min = GridTools::minimal_cell_diameter (triangulation_space); con
 		    fe_values_space_face.get_function_gradients (recon_sol_at_q_time, solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (recon_sol_at_q_time, solution_face_gradient_neighbor_values);
 
                 for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
-                space_est_face = fmax(space_est_face, fabs(solution_face_gradient_values[q_space]*fe_values_space_face_neighbor.normal_vector(q_space) - solution_face_gradient_neighbor_values[q_space]*fe_values_space_face_neighbor.normal_vector(q_space)));
+                space_est_face = fmax(space_est_face, fabs((solution_face_gradient_values[q_space] - solution_face_gradient_neighbor_values[q_space])*fe_values_space_face_neighbor.normal_vector(q_space)));
 
             fe_values_space_face.get_function_gradients (recon_deriv_at_q_time, solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (recon_deriv_at_q_time, solution_face_gradient_neighbor_values);
 
                 for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
-                deriv_space_est_face = fmax(deriv_space_est_face, fabs(solution_face_gradient_values[q_space]*fe_values_space_face_neighbor.normal_vector(q_space) - solution_face_gradient_neighbor_values[q_space]*fe_values_space_face_neighbor.normal_vector(q_space)));
+                deriv_space_est_face = fmax(deriv_space_est_face, fabs((solution_face_gradient_values[q_space] - solution_face_gradient_neighbor_values[q_space])*fe_values_space_face_neighbor.normal_vector(q_space)));
             }
             if (cell->face(face)->at_boundary() == false && cell->face(face)->has_children() == false && cell->neighbor_is_coarser(face) == true) // The neighbor face is coarser than the current face
             {
@@ -1029,12 +1029,12 @@ const double h_min = GridTools::minimal_cell_diameter (triangulation_space); con
 		    fe_values_space_face.get_function_gradients (recon_sol_at_q_time, solution_face_gradient_values); fe_values_space_subface.get_function_gradients (recon_sol_at_q_time, solution_face_gradient_neighbor_values);
 
                 for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
-                space_est_face = fmax(space_est_face, fabs(solution_face_gradient_values[q_space]*fe_values_space_subface.normal_vector(q_space) - solution_face_gradient_neighbor_values[q_space]*fe_values_space_subface.normal_vector(q_space)));
+                space_est_face = fmax(space_est_face, fabs((solution_face_gradient_values[q_space] - solution_face_gradient_neighbor_values[q_space])*fe_values_space_subface.normal_vector(q_space)));
 
             fe_values_space_face.get_function_gradients (recon_deriv_at_q_time, solution_face_gradient_values); fe_values_space_subface.get_function_gradients (recon_deriv_at_q_time, solution_face_gradient_neighbor_values);
 
                 for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
-                deriv_space_est_face = fmax(deriv_space_est_face, fabs(solution_face_gradient_values[q_space]*fe_values_space_subface.normal_vector(q_space) - solution_face_gradient_neighbor_values[q_space]*fe_values_space_subface.normal_vector(q_space)));
+                deriv_space_est_face = fmax(deriv_space_est_face, fabs((solution_face_gradient_values[q_space] - solution_face_gradient_neighbor_values[q_space])*fe_values_space_subface.normal_vector(q_space)));
             }
             if (cell->face(face)->at_boundary() == false && cell->face(face)->has_children() == true && cell->neighbor_is_coarser(face) == false) // The neighbor face is more refined than the current face 
             {
@@ -1050,12 +1050,12 @@ const double h_min = GridTools::minimal_cell_diameter (triangulation_space); con
                 fe_values_space_subface.get_function_gradients (recon_sol_at_q_time, solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (recon_sol_at_q_time, solution_face_gradient_neighbor_values);
 
                     for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
-                    space_est_face = fmax(space_est_face, fabs(solution_face_gradient_values[q_space]*fe_values_space_subface.normal_vector(q_space) - solution_face_gradient_neighbor_values[q_space]*fe_values_space_subface.normal_vector(q_space)));
+                    space_est_face = fmax(space_est_face, fabs((solution_face_gradient_values[q_space] - solution_face_gradient_neighbor_values[q_space])*fe_values_space_subface.normal_vector(q_space)));
 
                 fe_values_space_subface.get_function_gradients (recon_deriv_at_q_time, solution_face_gradient_values); fe_values_space_face_neighbor.get_function_gradients (recon_deriv_at_q_time, solution_face_gradient_neighbor_values);
 
                     for (unsigned int q_space = 0; q_space < no_q_space_x; ++q_space)
-                    deriv_space_est_face = fmax(deriv_space_est_face, fabs(solution_face_gradient_values[q_space]*fe_values_space_subface.normal_vector(q_space) - solution_face_gradient_neighbor_values[q_space]*fe_values_space_subface.normal_vector(q_space)));
+                    deriv_space_est_face = fmax(deriv_space_est_face, fabs((solution_face_gradient_values[q_space] - solution_face_gradient_neighbor_values[q_space])*fe_values_space_subface.normal_vector(q_space)));
                 }	
             }
             }
