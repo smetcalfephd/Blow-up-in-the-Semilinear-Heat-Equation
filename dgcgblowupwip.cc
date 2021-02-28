@@ -837,7 +837,7 @@ template <int dim> void dGcGblowup<dim>::compute_space_estimator (const unsigned
 {
 const QGauss<dim> quadrature_formula_space (no_q_space_x); const QGauss<dim-1> quadrature_formula_space_face (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
 
-FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_hessians | update_quadrature_points | update_JxW_values);
+FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_hessians | update_JxW_values);
 FEValues<1> old_fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
 
 const unsigned int no_q_space = quadrature_formula_space.size ();
@@ -859,7 +859,7 @@ typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_
 fe_values_time.reinit (time_cell); old_fe_values_time.reinit (old_time_cell);
 
     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-    compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values[q_time], Q_derivative_values[q_time], Q_second_derivative_values[q_time]);
+    compute_Q_values (time_degree, 2*quadrature_formula_time.point(q_time)(0) - 1, Q_values[q_time], Q_derivative_values[q_time], Q_second_derivative_values[q_time]);
 
 space_est = 0; solution_integral = 0; if (output_refinement_vector == true) {refinement_vector = 0;}
 
@@ -1137,7 +1137,7 @@ template <int dim> void dGcGblowup<dim>::compute_time_estimator (const unsigned 
 {
 const QGauss<dim> quadrature_formula_space (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
 
-FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_quadrature_points | update_JxW_values);
+FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
 FEValues<1> old_fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
 
 const unsigned int no_q_space = quadrature_formula_space.size();
@@ -1169,7 +1169,7 @@ typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_
 fe_values_time.reinit (time_cell); old_fe_values_time.reinit (old_time_cell);
 
     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-    compute_Q_values (time_degree, (2/dt)*fe_values_time.quadrature_point(q_time)(0) - 1, Q_values[q_time], Q_derivative_values[q_time], time_est);
+    compute_Q_values (time_degree, 2*quadrature_formula_time.point(q_time)(0) - 1, Q_values[q_time], Q_derivative_values[q_time], time_est);
 
 if (mesh_change == false && old_mesh_change == false) // If mesh_change == false and old_mesh_change == false, all meshes are the same and so we just compute on the current grid
 {
