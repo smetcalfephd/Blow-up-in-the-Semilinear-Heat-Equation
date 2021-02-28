@@ -1004,8 +1004,7 @@ const double h_min = GridTools::minimal_cell_diameter (triangulation_space); con
             {
             if (cell->face(face)->at_boundary() == false && cell->face(face)->has_children() == false && cell->neighbor_is_coarser(face) == false) // Both faces are the same size
             {
-		    typename DoFHandler<dim>::active_cell_iterator cell_neighbor = cell->neighbor (face);
-		    const unsigned int neighbor_face_no = cell->neighbor_face_no (face);
+		    typename DoFHandler<dim>::active_cell_iterator cell_neighbor = cell->neighbor (face); const unsigned int neighbor_face_no = cell->neighbor_face_no (face);
          
 	        fe_values_space_face.reinit (cell, face); fe_values_space_face_neighbor.reinit (cell_neighbor, neighbor_face_no);
 
@@ -1021,8 +1020,7 @@ const double h_min = GridTools::minimal_cell_diameter (triangulation_space); con
             }
             if (cell->face(face)->at_boundary() == false && cell->face(face)->has_children() == false && cell->neighbor_is_coarser(face) == true) // The neighbor face is coarser than the current face
             {
-            typename DoFHandler<dim>::active_cell_iterator cell_neighbor = cell->neighbor (face);
-            std::pair<unsigned int, unsigned int> neighbor_face_no = cell->neighbor_of_coarser_neighbor (face);
+            typename DoFHandler<dim>::active_cell_iterator cell_neighbor = cell->neighbor (face); std::pair<unsigned int, unsigned int> neighbor_face_no = cell->neighbor_of_coarser_neighbor (face);
 
 	        fe_values_space_face.reinit (cell, face); fe_values_space_subface.reinit (cell_neighbor, neighbor_face_no.first, neighbor_face_no.second);
 
@@ -1038,8 +1036,7 @@ const double h_min = GridTools::minimal_cell_diameter (triangulation_space); con
             }
             if (cell->face(face)->at_boundary() == false && cell->face(face)->has_children() == true && cell->neighbor_is_coarser(face) == false) // The neighbor face is more refined than the current face 
             {
-            const unsigned int no_of_subfaces = cell->face(face)->n_children();
-            const unsigned int neighbor_face_no = cell->neighbor_of_neighbor (face);
+            const unsigned int no_of_subfaces = cell->face(face)->n_children(); const unsigned int neighbor_face_no = cell->neighbor_of_neighbor (face);
 
                 for (unsigned int subface = 0; subface < no_of_subfaces; ++subface)
                 {
