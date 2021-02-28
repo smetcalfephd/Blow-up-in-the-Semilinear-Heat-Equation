@@ -85,7 +85,7 @@ public:
 	double dt_old = dt; // The timestep length on the last time interval
 
 	// Error estimator thresholds
-    double spatial_refinement_threshold = 0.00001; // The spatial refinement threshold
+    double spatial_refinement_threshold = 0.0001; // The spatial refinement threshold
     double spatial_coarsening_threshold = 0.1*std::pow(2.0, -1.0*space_degree)*spatial_refinement_threshold; // The spatial coarsening threshold
 	double temporal_refinement_threshold = 0.000001; // The temporal refinement threshold
 	const double delta_residual_threshold = 1e-4; // The threshold for the delta equation residual above which we consider the delta equation as having no root
@@ -598,18 +598,16 @@ dof_handler_space.distribute_dofs (fe_space);
 
 Vector<double> projection (dof_handler_space.n_dofs()); Vector<double> error (triangulation_space.n_active_cells());
 
-deallog << std::endl << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs() << std::endl;
-deallog << "Projecting the initial condition..." << std::endl;
+deallog << std::endl << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs() << std::endl << "Projecting the initial condition..." << std::endl;
 
 energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), projection);
 
-VectorTools::integrate_difference (dof_handler_space, projection, initialvalues<dim>(), error, QGauss<dim>(2*space_degree + 1), VectorTools::Linfty_norm); 
-space_est = error.linfty_norm ();
+VectorTools::integrate_difference (dof_handler_space, projection, initialvalues<dim>(), error, QGauss<dim>(2*space_degree + 1), VectorTools::Linfty_norm); space_est = error.linfty_norm ();
 
 deallog << "Initial Linfty Error: " << space_est << std::endl << std::endl;
 if (space_est > spatial_coarsening_threshold) {deallog << "Initial Linfty error is too large. Refining the mesh..." << std::endl;} else {deallog << "Initial Linfty error is sufficiently small. Proceeding to the initial setup step." << std::endl;}
 
-GridRefinement::refine (triangulation_space, error, spatial_coarsening_threshold);
+GridRefinement::refine (triangulation_space, error, spatial_coarsening_threshold); 
 triangulation_space.prepare_coarsening_and_refinement (); triangulation_space.execute_coarsening_and_refinement ();
 }	
 }
@@ -641,9 +639,7 @@ typename Triangulation<dim>::active_cell_iterator old_cell = old_triangulation_s
     for (; cell != final_cell; ++cell, ++old_cell)
     {
         for (unsigned int vertex = 0; vertex < 4; ++vertex)
-        {
         if ((cell->vertex(vertex) - old_cell->vertex(vertex))*(cell->vertex(vertex) - old_cell->vertex(vertex)) > 1e-15) {mesh_change = true; break;}
-        }
 
     if (mesh_change == true) {break;}
     }
@@ -1466,7 +1462,7 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
 
     if (time_est > temporal_refinement_threshold)
     {
-    dt = 0.5*dt; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt);
+    dt *= 0.5; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt);
     }
 
     if (mesh_change == true || time_est > temporal_refinement_threshold)
@@ -1481,17 +1477,14 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
     compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, false); // Compute the space estimator
     compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
     }
-
     }
 
     if (timestep_number == 0) {timestep_number = 1;}
 
-    time = time + dt;
+    time += dt;
 
     deallog  << std::endl << "Timestep " << timestep_number << " at t=" << std::setprecision (8) << time << std::setprecision (6) << std::endl;
-    deallog << "Total Degrees of Freedom: " << dof_handler.n_dofs () << std::endl;
-    deallog << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs () << std::endl;
-    deallog << "\u0394t: " << dt << std::endl;
+    deallog << "Total Degrees of Freedom: " << dof_handler.n_dofs () << std::endl << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs () << std::endl << "\u0394t: " << dt << std::endl;
 
     output_solution ();
     compute_estimator ();
