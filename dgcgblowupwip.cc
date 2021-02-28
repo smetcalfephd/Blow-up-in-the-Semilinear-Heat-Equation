@@ -124,7 +124,7 @@ private:
     void setup_system_full (); // Initialises all vectors, distributes all degrees of freedom and computes the static part of the system matrix
 	void setup_system_partial (); // Reinitialises vectors and redistributes degrees of freedom related to the current triangulation. Also recomputes the static part of the system matrix. Required if the mesh or time step length changes
 	void create_static_system_matrix (); // Creates the static part of the system matrix, i.e., that which does not change between nonlinear iterations
-    void create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &temporal_mass_matrix) const; // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
+    void create_temporal_mass_matrix (const DoFHandler<1> &dof_handler_time, FullMatrix<double> &temporal_mass_matrix) const; // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
 	void create_time_derivative_matrix (FullMatrix<double> &time_derivative_matrix) const; // Computes the "time derivative" matrix L_ij = (phi_i, d(phi_j)/dt) where {phi_i} is the standard basis for the temporal dG space
     void energy_project (const unsigned int &no_q_space_x, const Function<dim> &laplacian_function, Vector<double> &projection) const; // Computes the "energy projection" of the initial condition u0 to the finite element function U0 such that (grad(U_0), grad(V_0)) = (-laplacian(u_0), V_0) holds for all V_0
 	void assemble_and_solve (const unsigned int &no_q_space_x, const unsigned int &no_q_time); // Assembles the right-hand side vector and solves the nonlinear system via iteration until the difference in solutions is below ||U||*nonlinear_residual_threshold
@@ -132,7 +132,7 @@ private:
     void refine_mesh (); // Refines all cells with refinement_vector(cell_no) > spatial_refinement_threshold and coarsens all cells with refinement_vector(cell_no) < spatial_coarsening_threshold
     void prepare_for_next_time_step (); // Prepares the vectors, triangulations and dof_handlers for the next time step by setting them to previous values
 	void output_information () const; // Outputs the solution and the grid on the current time step as well as miscellaneous information collected during the computational run
-    void reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, const DoFHandler<dim> &dof_handler_space, const DoFHandler<dim> &dof_handler, const FESystem<dim> &fe) const; // Helper function which reorders the spacetime FEM vector into a blockvector with each block representing a temporal node
+    void reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function) const; // Helper function which reorders the spacetime FEM vector into a blockvector with each block representing a temporal node
 	void extend_to_constant_in_time_function (Vector<double> &fe_function, Vector<double> &spacetime_fe_function) const; // Helper function which takes a spatial FEM function and expands it to a constant-in-time spacetime FEM function
 	void compute_Q_values (const unsigned int &degree, const double &point, double &Q_value, double &Q_derivative_value, double &Q_second_derivative_value) const; // Compute the "Q" values and their various derivatives from the temporal reconstruction needed for the space and time estimators
 	void compute_space_estimator (const unsigned int &no_q_space_x, const unsigned int &no_q_time, const bool &output_refinement_vector); // Computes the space estimator. Optional argument specifies whether we ouptut the refinement vector needed for spatial mesh refinement
@@ -255,7 +255,7 @@ FullMatrix<double> temporal_mass_matrix (time_degree + 1, time_degree + 1);
 FullMatrix<double> time_derivative_matrix (time_degree + 1, time_degree + 1);
 std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
-create_temporal_mass_matrix (fe_time, dof_handler_time, temporal_mass_matrix); 
+create_temporal_mass_matrix (dof_handler_time, temporal_mass_matrix); 
 if (time_degree > 0) {create_time_derivative_matrix (time_derivative_matrix);}
 
 typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active (), final_space_cell = dof_handler_space.end ();
@@ -312,7 +312,7 @@ if (nonlinear_solver == "picard") {preconditioner.initialize (system_matrix);}
 
 // Computes the temporal mass matrix M_ij = (phi_i, phi_j) where {phi_i} is the standard basis for the temporal dG space
 
-template <int dim> void dGcGblowup<dim>::create_temporal_mass_matrix (const FE_DGQ<1> &fe_time, const DoFHandler<1> &dof_handler_time, FullMatrix<double> &temporal_mass_matrix) const
+template <int dim> void dGcGblowup<dim>::create_temporal_mass_matrix (const DoFHandler<1> &dof_handler_time, FullMatrix<double> &temporal_mass_matrix) const
 {
 const QGauss<1> quadrature_formula_time (time_degree + 1);
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_JxW_values);
@@ -583,7 +583,7 @@ unsigned int iteration_number = 1; double residual = 0; const double max = old_s
     residual_vector.add (-1, temporary_solution); residual = residual_vector.linfty_norm (); if (residual < max*nonlinear_residual_threshold) {break;}
     }
 
-switch(time_degree) {case 0: solution.block(0) = temporary_solution; break; default: reorder_solution_vector (temporary_solution, solution, dof_handler_space, dof_handler, fe);}
+switch(time_degree) {case 0: solution.block(0) = temporary_solution; break; default: reorder_solution_vector (temporary_solution, solution);}
 
 if (iteration_number == maximum_nonlinear_iterates) {deallog << "...converged in the maximum number of allowed iterations (" << maximum_nonlinear_iterates << ") with a residual of " << residual << std::endl;} else {deallog << "...converged in " << iteration_number << " iterations with a residual of " << residual << std::endl;}
 }
@@ -754,7 +754,7 @@ std::ofstream hmin_values_file ("hmin_values.txt", std::ios::app); hmin_values_f
 
 // Helper function which reorders the spacetime FEM vector into a blockvector with each block representing a temporal node
 
-template <int dim> void dGcGblowup<dim>::reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, const DoFHandler<dim> &dof_handler_space, const DoFHandler<dim> &dof_handler, const FESystem<dim> &fe) const
+template <int dim> void dGcGblowup<dim>::reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function) const
 {
 const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
@@ -851,9 +851,9 @@ std::vector<double> Q_values (no_q_time); std::vector<double> Q_derivative_value
 std::vector<Tensor<1,dim>> solution_face_gradient_values (no_q_space_x); std::vector<Tensor<1,dim>> solution_face_gradient_neighbor_values (no_q_space_x);
 std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell_space);
 
-create_temporal_mass_matrix (fe_time, dof_handler_time, temporal_mass_matrix_inv); temporal_mass_matrix_inv.gauss_jordan ();
+create_temporal_mass_matrix (dof_handler_time, temporal_mass_matrix_inv); temporal_mass_matrix_inv.gauss_jordan ();
 
-if (dt == dt_old) {old_temporal_mass_matrix_inv = temporal_mass_matrix_inv;} else {create_temporal_mass_matrix (fe_time, old_dof_handler_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();}
+if (dt == dt_old) {old_temporal_mass_matrix_inv = temporal_mass_matrix_inv;} else {create_temporal_mass_matrix (old_dof_handler_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();}
     
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active (); typename DoFHandler<1>::active_cell_iterator old_time_cell = old_dof_handler_time.begin_active ();
 fe_values_time.reinit (time_cell); old_fe_values_time.reinit (old_time_cell);
@@ -1159,10 +1159,10 @@ std::vector<types::global_dof_index> local_dof_indices_space (dofs_per_cell_spac
 
 if (time_degree > 0)
 {
-create_temporal_mass_matrix (fe_time, dof_handler_time, temporal_mass_matrix_inv); temporal_mass_matrix_inv.gauss_jordan ();
+create_temporal_mass_matrix (dof_handler_time, temporal_mass_matrix_inv); temporal_mass_matrix_inv.gauss_jordan ();
 
 if (dt == dt_old) {old_temporal_mass_matrix_inv = temporal_mass_matrix_inv;}
-else {create_temporal_mass_matrix (fe_time, old_dof_handler_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();}
+else {create_temporal_mass_matrix (old_dof_handler_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();}
 }
 
 typename DoFHandler<1>::active_cell_iterator time_cell = dof_handler_time.begin_active(); typename DoFHandler<1>::active_cell_iterator old_time_cell = old_dof_handler_time.begin_active();
