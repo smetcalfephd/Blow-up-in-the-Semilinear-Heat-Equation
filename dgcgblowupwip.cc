@@ -5,9 +5,10 @@
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_values.h>
-#include <deal.II/grid/grid_tools.h>
 #include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/grid_out.h>
 #include <deal.II/grid/grid_refinement.h>
+#include <deal.II/grid/grid_tools.h>
 #include <deal.II/lac/block_vector.h>
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
 #include <deal.II/lac/solver_bicgstab.h>
@@ -96,6 +97,11 @@ public:
     const unsigned int maximum_nonlinear_iterates = 35; // Maximum number of iterates the nonlinear solver will do before terminating
     const double nonlinear_residual_threshold = 8e-15; // The nonlinear solver will continue to iterate until the difference in solutions is less than ||U||*nonlinear_residual_threshold
 
+    // User parameters
+    const bool output_solution = false; // Choose whether to output the solution (.gnuplot)
+    const bool output_grid = false; // Choose whether to output the grid (.gnuplot)
+    const bool output_data = false; // Choose whether to output various miscellaneous data (.txt)
+
 
     // ~~INTERNAL PARAMETERS~~ -- LEAVE ALONE!!
 
@@ -125,7 +131,7 @@ private:
     void refine_initial_mesh (); // Refines the initial mesh and recomputes the energy projection of the initial condition until ||u_0 - U_0|| < spatial_coarsening_threshold
     void refine_mesh (); // Refines all cells with refinement_vector(cell_no) > spatial_refinement_threshold and coarsens all cells with refinement_vector(cell_no) < spatial_coarsening_threshold
     void prepare_for_next_time_step (); // Prepares the vectors, triangulations and dof_handlers for the next time step by setting them to previous values
-	void output_solution () const; // Outputs the solution at final time on the current time step
+	void output_information () const; // Outputs the solution and the grid on the current time step as well as miscellaneous information collected during the computational run
     void reorder_solution_vector (const Vector<double> &spacetime_fe_function, BlockVector<double> &reordered_spacetime_fe_function, const DoFHandler<dim> &dof_handler_space, const DoFHandler<dim> &dof_handler, const FESystem<dim> &fe) const; // Helper function which reorders the spacetime FEM vector into a blockvector with each block representing a temporal node
 	void extend_to_constant_in_time_function (Vector<double> &fe_function, Vector<double> &spacetime_fe_function) const; // Helper function which takes a spatial FEM function and expands it to a constant-in-time spacetime FEM function
 	void compute_Q_values (const unsigned int &degree, const double &point, double &Q_value, double &Q_derivative_value, double &Q_second_derivative_value) const; // Compute the "Q" values and their various derivatives from the temporal reconstruction needed for the space and time estimators
@@ -703,15 +709,47 @@ spatial_refinement_threshold *= r; spatial_coarsening_threshold *= r; temporal_r
 old_mesh_change = mesh_change; mesh_change = false; // Reset the mesh change parameters in preparation for the next time step
 }
 
-// Outputs the solution at final time on the current time step
+// Outputs the solution and the grid on the current time step as well as miscellaneous information collected during the computational run
 
-template <int dim> void dGcGblowup<dim>::output_solution () const
+template <int dim> void dGcGblowup<dim>::output_information () const
 {
-DataOut<dim> data_out; data_out.attach_dof_handler (dof_handler_space); data_out.add_data_vector (solution.block(time_degree), "u_h"); data_out.build_patches ();
+if (output_solution == true)
+{
+DataOut<dim> data_out; data_out.attach_dof_handler (dof_handler_space); 
+switch (timestep_number) {case 0: data_out.add_data_vector (old_solution.block(time_degree), "U"); break; default: data_out.add_data_vector (solution.block(time_degree), "U");}
+data_out.build_patches (int(0.5*space_degree) + 1);
 
 const std::string filename = "solution-" + Utilities::int_to_string (timestep_number, 3) + ".gnuplot";
 
 std::ofstream gnuplot_output (filename.c_str()); data_out.write_gnuplot (gnuplot_output);
+}
+if (output_grid == true)
+{
+const std::string filename = "grid-" + Utilities::int_to_string (timestep_number, 3) + ".gnuplot";
+
+std::ofstream gnuplot_output (filename.c_str()); GridOut().write_gnuplot (triangulation_space, gnuplot_output);
+}
+if (output_data == true)
+{
+if (timestep_number == 0)
+{
+std::ofstream time_values_file ("time_values.txt"); time_values_file << std::setprecision (9) << time << std::setprecision (6); time_values_file.close ();
+std::ofstream solution_values_file ("solution_values.txt"); solution_values_file << std::setprecision (9) << old_solution.block(time).linfty_norm () << std::setprecision (6); solution_values_file.close ();
+std::ofstream estimator_values_file ("estimator_values.txt"); estimator_values_file << std::setprecision (9) << 0 << std::setprecision (6); estimator_values_file.close ();
+std::ofstream dt_values_file ("dt_values.txt"); dt_values_file << std::setprecision (9) << dt << std::setprecision (6); dt_values_file.close ();
+std::ofstream dof_values_file ("dof_values.txt"); dof_values_file << std::setprecision (9) <<  dof_handler_space.n_dofs () << std::setprecision (6); dof_values_file.close ();
+std::ofstream hmin_values_file ("hmin_values.txt"); hmin_values_file << std::setprecision (9) << GridTools::minimal_cell_diameter (triangulation_space) << std::setprecision (6); hmin_values_file.close ();
+}
+else
+{
+std::ofstream time_values_file ("time_values.txt", std::ios::app); time_values_file << std::endl << std::setprecision (9) << time << std::setprecision (6); time_values_file.close ();
+std::ofstream solution_values_file ("solution_values.txt", std::ios::app); solution_values_file << std::endl << std::setprecision (9) << solution.block(time).linfty_norm () << std::setprecision (6); solution_values_file.close ();
+std::ofstream estimator_values_file ("estimator_values.txt", std::ios::app); estimator_values_file << std::endl << std::setprecision (9) << est << std::setprecision (6); estimator_values_file.close ();
+std::ofstream dt_values_file ("dt_values.txt", std::ios::app); dt_values_file << std::endl << std::setprecision (9) << dt << std::setprecision (6); dt_values_file.close ();
+std::ofstream dof_values_file ("dof_values.txt", std::ios::app); dof_values_file << std::endl << std::setprecision (9) << dof_handler_space.n_dofs () << std::setprecision (6); dof_values_file.close ();
+std::ofstream hmin_values_file ("hmin_values.txt", std::ios::app); hmin_values_file << std::endl << std::setprecision (9) << GridTools::minimal_cell_diameter (triangulation_space) << std::setprecision (6); hmin_values_file.close ();
+}
+}
 }
 
 // Helper function which reorders the spacetime FEM vector into a blockvector with each block representing a temporal node
@@ -730,11 +768,11 @@ typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (
     {
     cell->get_dof_indices (local_dof_indices); space_cell->get_dof_indices (local_dof_indices_space);
 
-        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+        for (unsigned int k = 0; k < dofs_per_cell; ++k)
         {
-        const unsigned int comp_s_i = fe.system_to_component_index(i).second; const unsigned int comp_t_i = fe.system_to_component_index(i).first;
+        const unsigned int comp_s_k = fe.system_to_component_index(k).second; const unsigned int comp_t_k = fe.system_to_component_index(k).first;
 
-        reordered_spacetime_fe_function.block(comp_t_i)(local_dof_indices_space[comp_s_i]) = spacetime_fe_function(local_dof_indices[i]);
+        reordered_spacetime_fe_function.block(comp_t_k)(local_dof_indices_space[comp_s_k]) = spacetime_fe_function(local_dof_indices[k]);
         }
     }
 }
@@ -755,11 +793,11 @@ typename DoFHandler<dim>::active_cell_iterator cell = dof_handler.begin_active (
     {
     cell->get_dof_indices (local_dof_indices); space_cell->get_dof_indices (local_dof_indices_space);
 
-        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+        for (unsigned int k = 0; k < dofs_per_cell; ++k)
         {
-        const unsigned int comp_s_i = fe.system_to_component_index(i).second;
+        const unsigned int comp_s_k = fe.system_to_component_index(k).second;
 
-        spacetime_fe_function(local_dof_indices[i]) = fe_function(local_dof_indices_space[comp_s_i]);
+        spacetime_fe_function(local_dof_indices[k]) = fe_function(local_dof_indices_space[comp_s_k]);
         }
     }
 }
@@ -1428,7 +1466,7 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
     deallog << "Projecting the initial condition..." << std::endl;
 
     energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), old_solution.block(time_degree)); 
-    output_solution ();
+    output_information ();
     assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1); // Setup and solve the system and output the numerical solution
     compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, true); // Compute the space estimator
     compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
@@ -1480,8 +1518,8 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
     deallog  << std::endl << "Timestep " << timestep_number << " at t=" << std::setprecision (8) << time << std::setprecision (6) << std::endl;
     deallog << "Total Degrees of Freedom: " << dof_handler.n_dofs () << std::endl << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs () << std::endl << "\u0394t: " << dt << std::endl;
 
-    output_solution ();
     compute_estimator ();
+    output_information ();
 
     prepare_for_next_time_step ();
     }
