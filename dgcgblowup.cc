@@ -1109,8 +1109,8 @@ Vector<double> union_refinement_vector; if (output_refinement_vector == true) {u
 
     for (unsigned int r = 0; r < time_degree + 1; ++r)
     {
-    VectorTools::interpolate_to_different_mesh (old_dof_handler_space, old_solution.block(r), union_dof_handler_space, old_solution_union.block(r));
     VectorTools::interpolate_to_different_mesh (dof_handler_space, solution.block(r), union_dof_handler_space, solution_union.block(r));
+    VectorTools::interpolate_to_different_mesh (old_dof_handler_space, old_solution.block(r), union_dof_handler_space, old_solution_union.block(r));
     }
 
 VectorTools::interpolate_to_different_mesh (old_old_dof_handler_space, old_old_solution_plus, union_dof_handler_space, old_old_solution_plus_union);
@@ -1497,8 +1497,8 @@ VectorTools::interpolate_to_different_mesh (old_old_dof_handler_space, old_old_s
 
     for (unsigned int r = 0; r < time_degree + 1; ++r)
     {
-    VectorTools::interpolate_to_different_mesh (old_dof_handler_space, old_solution.block(r), dof_handler_space_union, old_solution_union.block(r));
     VectorTools::interpolate_to_different_mesh (dof_handler_space, solution.block(r), dof_handler_space_union, solution_union.block(r));
+    VectorTools::interpolate_to_different_mesh (old_dof_handler_space, old_solution.block(r), dof_handler_space_union, old_solution_union.block(r));
     }
 
 typename DoFHandler<dim>::active_cell_iterator union_space_cell = dof_handler_space_union.begin_active (), final_union_space_cell = dof_handler_space_union.end ();
