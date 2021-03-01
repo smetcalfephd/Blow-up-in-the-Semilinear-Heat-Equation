@@ -1621,8 +1621,7 @@ deallog << "r: " << r << std::endl << std::endl; // Output the value of the scal
 
 template <int dim> void dGcGblowup<dim>::run ()
 {
-deallog << "Spatial Polynomial Degree: " << space_degree << std::endl;
-deallog << "Temporal Polynomial Degree: " << time_degree << std::endl;
+deallog << "Spatial Polynomial Degree: " << space_degree << std::endl << "Temporal Polynomial Degree: " << time_degree << std::endl;
 
 //GridGenerator::hyper_cube (triangulation_space, -5, 5); triangulation_space.refine_global (2);
 GridGenerator::hyper_cube (triangulation_space, -10, 10); triangulation_space.refine_global (2);
@@ -1648,9 +1647,7 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
 
     setup_system_full ();
 
-    deallog << std::endl << "Total Degrees of Freedom: " << dof_handler.n_dofs () << std::endl;
-    deallog << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs() << std::endl;
-    deallog << "\u0394t: " << dt << std::endl << std::endl;
+    deallog << std::endl << "Total Degrees of Freedom: " << dof_handler.n_dofs () << std::endl << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs() << std::endl << "\u0394t: " << dt << std::endl << std::endl;
     deallog << "Projecting the initial condition..." << std::endl;
 
     energy_project (2*space_degree + 1, initialvalueslaplacian<dim>(), old_solution.block(time_degree)); 
@@ -1659,15 +1656,13 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
     compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, true); // Compute the space estimator
     compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
 
-    deallog << std::endl << "Space Estimator: " << space_est << std::endl; // Output the value of the time estimator
-    deallog << "Time Estimator: " << time_est << std::endl; // Output the value of the time estimator
+    deallog << std::endl << "Space Estimator: " << space_est << std::endl << "Time Estimator: " << time_est << std::endl; // Output the value of the estimators
 
     refine_mesh ();
 
     if (time_est > temporal_refinement_threshold)
     {
-    dt = 0.5*dt; dt_old = dt; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.clear(); old_triangulation_time.copy_triangulation (triangulation_time);
-    mesh_change = true;
+    dt *= 0.5; dt_old = dt; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt); old_triangulation_time.clear(); old_triangulation_time.copy_triangulation (triangulation_time); mesh_change = true;
     }
     if (mesh_change == true) {deallog << std::endl << "Estimators are too large. Refining the initial mesh and/or timestep length..." << std::endl;} else {deallog << std::endl << "Estimators are sufficiently small. Proceeding to the first timestep." << std::endl;}
     }
@@ -1680,11 +1675,7 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
 
     refine_mesh ();
 
-    if (time_est > temporal_refinement_threshold)
-    {
-    dt *= 0.5; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt);
-    }
-
+    if (time_est > temporal_refinement_threshold) {dt *= 0.5; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt);}
     if (mesh_change == true || time_est > temporal_refinement_threshold)
     {
     deallog << std::endl;
@@ -1703,7 +1694,7 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
 
     time += dt;
 
-    deallog  << std::endl << "Timestep " << timestep_number << " at t=" << std::setprecision (8) << time << std::setprecision (6) << std::endl;
+    deallog << std::endl << "Timestep " << timestep_number << " at t=" << std::setprecision (8) << time << std::setprecision (6) << std::endl;
     deallog << "Total Degrees of Freedom: " << dof_handler.n_dofs () << std::endl << "Spatial Degrees of Freedom: " << dof_handler_space.n_dofs () << std::endl << "\u0394t: " << dt << std::endl;
 
     compute_estimator ();
