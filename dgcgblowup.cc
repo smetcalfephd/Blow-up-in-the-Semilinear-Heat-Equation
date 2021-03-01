@@ -1332,11 +1332,12 @@ template <int dim> void dGcGblowup<dim>::compute_time_estimator (const unsigned 
 {
 const QGauss<dim> quadrature_formula_space (no_q_space_x); const QGaussLobatto<1> quadrature_formula_time (no_q_time);
 
+FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values | update_quadrature_points);
 FEValues<1> fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
 FEValues<1> old_fe_values_time (fe_time, quadrature_formula_time, update_values | update_gradients | update_JxW_values);
 
 const unsigned int no_q_space = quadrature_formula_space.size();
-const unsigned int dofs_per_cell_space = fe_space.dofs_per_cell;
+const unsigned int dofs_per_cell = fe_space.dofs_per_cell;
 
 FullMatrix<double> temporal_mass_matrix_inv (time_degree + 1, time_degree + 1);
 FullMatrix<double> old_temporal_mass_matrix_inv (time_degree + 1, time_degree + 1);
@@ -1350,7 +1351,7 @@ std::vector<double> L2_projection_f_values (no_q_time);
 std::vector<double> old_old_solution_plus_values (no_q_space);
 std::vector<double> Q_values (no_q_time);
 std::vector<double> Q_derivative_values (no_q_time);
-std::vector<types::global_dof_index> local_dof_indices_space (dofs_per_cell_space);
+std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
 if (time_degree > 0)
 {
@@ -1366,31 +1367,29 @@ fe_values_time.reinit (time_cell); old_fe_values_time.reinit (old_time_cell);
     for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
     compute_Q_values (time_degree, 2*quadrature_formula_time.point(q_time)(0) - 1, Q_values[q_time], Q_derivative_values[q_time], time_est);
 
+time_est = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; double nonlinearity_value = 0; double solution_time_derivative_value = 0;
+
 if (mesh_change == false && old_mesh_change == false) // If mesh_change == false and old_mesh_change == false, all meshes are the same and so we just compute on the current grid
 {
-FEValues<dim> fe_values_space (fe_space, quadrature_formula_space, update_values | update_quadrature_points);
-
-typename DoFHandler<dim>::active_cell_iterator space_cell = dof_handler_space.begin_active (), final_space_cell = dof_handler_space.end ();
-
-time_est = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; double nonlinearity_value = 0; double solution_time_derivative_value = 0; 
+typename DoFHandler<dim>::active_cell_iterator cell = dof_handler_space.begin_active (), final_cell = dof_handler_space.end ();
 
     // Loop over all cells, compute the Linfty norm of the temporal residual of the solution at each temporal quadrature point and store it in estimator_values
 
-    for (; space_cell != final_space_cell; ++space_cell)
+    for (; cell != final_cell; ++cell)
     {
-    fe_values_space.reinit (space_cell);
+    fe_values_space.reinit (cell);
 
-    space_cell->get_dof_indices (local_dof_indices_space);
+    cell->get_dof_indices (local_dof_indices);
 
-    old_solution_values = 0; solution_values = 0;
+    solution_values = 0; old_solution_values = 0;
 
         for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-   	            for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+   	            for (unsigned int i = 0; i < dofs_per_cell; ++i)
                     for (unsigned int r = 0; r < time_degree + 1; ++r)
                     {
-                    if (timestep_number > 1) {old_solution_values(q_space + q_time*no_q_space) += old_solution.block(r)(local_dof_indices_space[i])*fe_values_space.shape_value(i,q_space)*old_fe_values_time.shape_value(r,q_time);}
-                    solution_values(q_space + q_time*no_q_space) += solution.block(r)(local_dof_indices_space[i])*fe_values_space.shape_value(i,q_space)*fe_values_time.shape_value(r,q_time);
+                    solution_values(q_space + q_time*no_q_space) += solution.block(r)(local_dof_indices[i])*fe_values_space.shape_value(i,q_space)*fe_values_time.shape_value(r,q_time);
+                    if (timestep_number > 1) {old_solution_values(q_space + q_time*no_q_space) += old_solution.block(r)(local_dof_indices[i])*fe_values_space.shape_value(i,q_space)*old_fe_values_time.shape_value(r,q_time);}
                     }
 
     if (timestep_number > 1) {fe_values_space.get_function_values (old_old_solution_plus, old_old_solution_plus_values);}
@@ -1414,9 +1413,9 @@ time_est = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; d
             for (unsigned int i = 0; i < time_degree + 1; ++i)
             L2_projection_f(time_degree) += old_temporal_mass_matrix_inv(time_degree, i)*L2_projection_rhs(i);
 
-	        for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+	        for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 for (unsigned int r = 0; r < time_degree + 1; ++r)
-                solution_time_derivative_value += old_solution.block(r)(local_dof_indices_space[i])*fe_values_space.shape_value(i,q_space)*old_fe_values_time.shape_grad(r,no_q_time - 1)[0];
+                solution_time_derivative_value += old_solution.block(r)(local_dof_indices[i])*fe_values_space.shape_value(i,q_space)*old_fe_values_time.shape_grad(r,no_q_time - 1)[0];
         }
 
         discrete_laplacian_jump_value = -L2_projection_f(time_degree) + solution_time_derivative_value + (1/dt_old)*Q_derivative_values[no_q_time-1]*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
@@ -1440,9 +1439,9 @@ time_est = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; d
         temporal_mass_matrix_inv.vmult (L2_projection_f, L2_projection_rhs);
         fe_values_time.get_function_values (L2_projection_f, L2_projection_f_values);
 
-            for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 for (unsigned int r = 0; r < time_degree + 1; ++r)
-                solution_time_derivative_value += solution.block(r)(local_dof_indices_space[i])*fe_values_space.shape_value(i,q_space)*fe_values_time.shape_grad(r,0)[0];
+                solution_time_derivative_value += solution.block(r)(local_dof_indices[i])*fe_values_space.shape_value(i,q_space)*fe_values_time.shape_grad(r,0)[0];
         }
 
         jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
@@ -1476,8 +1475,6 @@ GridGenerator::create_union_triangulation (triangulation_space, intermediate_tri
 
 DoFHandler<dim> dof_handler_space_union (union_triangulation); dof_handler_space_union.distribute_dofs (fe_space);
 
-FEValues<dim> fe_values_space_union (fe_space, quadrature_formula_space, update_values | update_quadrature_points);
-
 const unsigned int no_of_union_space_dofs = dof_handler_space_union.n_dofs ();
 
 BlockVector<double> solution_union (time_degree + 1); BlockVector<double> old_solution_union (time_degree + 1);
@@ -1493,38 +1490,36 @@ Vector<double> old_old_solution_plus_union (no_of_union_space_dofs);
 
 // Interpolate all current vectors to the union mesh
 
-VectorTools::interpolate_to_different_mesh (old_old_dof_handler_space, old_old_solution_plus, dof_handler_space_union, old_old_solution_plus_union);
-
     for (unsigned int r = 0; r < time_degree + 1; ++r)
     {
     VectorTools::interpolate_to_different_mesh (dof_handler_space, solution.block(r), dof_handler_space_union, solution_union.block(r));
     VectorTools::interpolate_to_different_mesh (old_dof_handler_space, old_solution.block(r), dof_handler_space_union, old_solution_union.block(r));
     }
 
-typename DoFHandler<dim>::active_cell_iterator union_space_cell = dof_handler_space_union.begin_active (), final_union_space_cell = dof_handler_space_union.end ();
+VectorTools::interpolate_to_different_mesh (old_old_dof_handler_space, old_old_solution_plus, dof_handler_space_union, old_old_solution_plus_union);
 
-time_est = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; double nonlinearity_value = 0; double solution_time_derivative_value = 0;
+typename DoFHandler<dim>::active_cell_iterator union_cell = dof_handler_space_union.begin_active (), final_union_cell = dof_handler_space_union.end ();
 
     // Loop over all cells, compute the Linfty norm of the temporal residual of the solution at each temporal quadrature point and store it in estimator_values
 
-    for (; union_space_cell != final_union_space_cell; ++union_space_cell)
+    for (; union_cell != final_union_cell; ++union_cell)
     {
-    fe_values_space_union.reinit (union_space_cell);
+    fe_values_space.reinit (union_cell);
 
-    union_space_cell->get_dof_indices (local_dof_indices_space);
+    union_cell->get_dof_indices (local_dof_indices);
 
-    old_solution_values = 0; solution_values = 0;
+    solution_values = 0; old_solution_values = 0;
 
         for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
-   	            for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+   	            for (unsigned int i = 0; i < dofs_per_cell; ++i)
                     for (unsigned int r = 0; r < time_degree + 1; ++r)
                     {
-                    old_solution_values(q_space + q_time*no_q_space) += old_solution_union.block(r)(local_dof_indices_space[i])*fe_values_space_union.shape_value(i,q_space)*old_fe_values_time.shape_value(r,q_time);
-                    solution_values(q_space + q_time*no_q_space) += solution_union.block(r)(local_dof_indices_space[i])*fe_values_space_union.shape_value(i,q_space)*fe_values_time.shape_value(r,q_time);
+                    solution_values(q_space + q_time*no_q_space) += solution_union.block(r)(local_dof_indices[i])*fe_values_space.shape_value(i,q_space)*fe_values_time.shape_value(r,q_time);
+                    old_solution_values(q_space + q_time*no_q_space) += old_solution_union.block(r)(local_dof_indices[i])*fe_values_space.shape_value(i,q_space)*old_fe_values_time.shape_value(r,q_time);
                     }
 
-    fe_values_space_union.get_function_values (old_old_solution_plus_union, old_old_solution_plus_values);
+    fe_values_space.get_function_values (old_old_solution_plus_union, old_old_solution_plus_values);
 
         for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
         {
@@ -1542,9 +1537,9 @@ time_est = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; d
             for (unsigned int i = 0; i < time_degree + 1; ++i)
             L2_projection_f(time_degree) += old_temporal_mass_matrix_inv(time_degree, i)*L2_projection_rhs(i);
 
-	        for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+	        for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 for (unsigned int r = 0; r < time_degree + 1; ++r)
-                solution_time_derivative_value += old_solution_union.block(r)(local_dof_indices_space[i])*fe_values_space_union.shape_value(i, q_space)*old_fe_values_time.shape_grad(r, no_q_time - 1)[0];
+                solution_time_derivative_value += old_solution_union.block(r)(local_dof_indices[i])*fe_values_space.shape_value(i, q_space)*old_fe_values_time.shape_grad(r, no_q_time - 1)[0];
         }
 
         discrete_laplacian_jump_value = -L2_projection_f(time_degree) + solution_time_derivative_value + (1/dt_old)*Q_derivative_values[no_q_time-1]*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
@@ -1563,9 +1558,9 @@ time_est = 0; double discrete_laplacian_jump_value = 0; double jump_value = 0; d
         temporal_mass_matrix_inv.vmult (L2_projection_f, L2_projection_rhs);
         fe_values_time.get_function_values (L2_projection_f, L2_projection_f_values);
 
-            for (unsigned int i = 0; i < dofs_per_cell_space; ++i)
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 for (unsigned int r = 0; r < time_degree + 1; ++r)
-                solution_time_derivative_value += solution_union.block(r)(local_dof_indices_space[i])*fe_values_space_union.shape_value(i, q_space)*fe_values_time.shape_grad(r, 0)[0];
+                solution_time_derivative_value += solution_union.block(r)(local_dof_indices[i])*fe_values_space.shape_value(i, q_space)*fe_values_time.shape_grad(r, 0)[0];
         }
 
         jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
@@ -1615,7 +1610,7 @@ deallog << std::endl << "max||U(t)||: " << solution.block(time_degree).linfty_no
 deallog << "Estimator: " << est << std::endl; // Output the value of the estimator
 deallog << "Space Estimator: " << space_est << std::endl; // Output the value of the space estimator
 deallog << "Time Estimator: " << time_est << std::endl; // Output the value of the time estimator
-deallog << "r: " << r << std::endl << std::endl; // Output the value of the scaling parameter r_m
+deallog << "r: " << r << std::endl << std::endl; // Output the value of the scaling parameter r
 }
 }
 
