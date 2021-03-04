@@ -1,4 +1,4 @@
 This project is based on approximating blowup solutions of the semilinear heat equation
 
-u<sub>t</sub> - Δu = u<sup>2</sup>
+u<code><sub>t</sub></code> - Δu = u<code><sup>2</sup></code>
 
