@@ -89,9 +89,9 @@ public:
     double dt_init = dt;
 
 	// Error estimator thresholds
-    double spatial_refinement_threshold = 0.0001; // The spatial refinement threshold
+    double spatial_refinement_threshold = 0.00001; // The spatial refinement threshold
     double spatial_coarsening_threshold = 0.1*std::pow(2.0, -1.0*space_degree)*spatial_refinement_threshold; // The spatial coarsening threshold
-	double temporal_refinement_threshold = 0.000001; // The temporal refinement threshold
+	double temporal_refinement_threshold = 0.0000001; // The temporal refinement threshold
 	const double delta_residual_threshold = 1e-4; // The threshold for the delta equation residual above which we consider the delta equation as having no root
 
     // Nonlinear solver parameters
@@ -885,6 +885,10 @@ std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 if (time_degree > 0)
 {
 create_temporal_mass_matrix (dof_handler_time, fe_time, temporal_mass_matrix_inv); temporal_mass_matrix_inv.gauss_jordan ();
+}
+
+if (old_time_degree > 0)
+{
 create_temporal_mass_matrix (old_dof_handler_time, old_fe_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();
 }
 
@@ -1398,6 +1402,10 @@ std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 if (time_degree > 0)
 {
 create_temporal_mass_matrix (dof_handler_time, fe_time, temporal_mass_matrix_inv); temporal_mass_matrix_inv.gauss_jordan ();
+}
+
+if (old_time_degree > 0)
+{
 create_temporal_mass_matrix (old_dof_handler_time, old_fe_time, old_temporal_mass_matrix_inv); old_temporal_mass_matrix_inv.gauss_jordan ();
 }
 
@@ -1447,7 +1455,7 @@ typename DoFHandler<dim>::active_cell_iterator cell = dof_handler_space.begin_ac
         {
         if (timestep_number > 1)
         {
-        switch (old_time_degree) {case 0: L2_projection_f(0) = old_solution_values(q_space)*old_solution_values(q_space); break;
+        switch (old_time_degree) {case 0: discrete_laplacian_jump_value = (1/dt_old)*old_Q_derivative_values[no_q_time-1]*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]) - old_solution_values(q_space)*old_solution_values(q_space); break;
         default: L2_projection_f(0) = 0; old_L2_projection_rhs = 0; solution_time_derivative_value = 0;
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
@@ -1464,9 +1472,10 @@ typename DoFHandler<dim>::active_cell_iterator cell = dof_handler_space.begin_ac
 	        for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 for (unsigned int r = 0; r < old_time_degree + 1; ++r)
                 solution_time_derivative_value += old_solution.block(r)(local_dof_indices[i])*fe_values_space.shape_value(i,q_space)*old_fe_values_time.shape_grad(r,no_q_time - 1)[0];
-        }
 
         discrete_laplacian_jump_value = -L2_projection_f(0) + solution_time_derivative_value + (1/dt_old)*old_Q_derivative_values[no_q_time-1]*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
+        }
+
         }
         else
         {
@@ -1721,7 +1730,7 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
 
     refine_mesh ();
 
-    if (time_est > temporal_refinement_threshold) {dt *= 0.5; time_degree = (unsigned int)(fmax(0.0, ceil(time_degree_max - 0.6*log(dt_init/dt)))); if (time_degree != old_time_degree ) {dt *= 0.5;} triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt);}
+    if (time_est > temporal_refinement_threshold) {dt *= 0.5; time_degree = (unsigned int)(fmax(0.0, ceil(time_degree_max - 0.47*log(dt_init/dt)))); if (time_degree != old_time_degree ) {dt *= 0.5;} triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt);}
     if (mesh_change == true || time_est > temporal_refinement_threshold)
     {
     deallog << std::endl;
