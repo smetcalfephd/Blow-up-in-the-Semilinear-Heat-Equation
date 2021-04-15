@@ -758,6 +758,7 @@ std::ofstream estimator_values_file ("estimator_values.txt"); estimator_values_f
 std::ofstream dt_values_file ("dt_values.txt"); dt_values_file << std::setprecision (9) << dt << std::setprecision (6); dt_values_file.close ();
 std::ofstream dof_values_file ("dof_values.txt"); dof_values_file << std::setprecision (9) <<  dof_handler_space.n_dofs () << std::setprecision (6); dof_values_file.close ();
 std::ofstream hmin_values_file ("hmin_values.txt"); hmin_values_file << std::setprecision (9) << GridTools::minimal_cell_diameter (triangulation_space) << std::setprecision (6); hmin_values_file.close ();
+std::ofstream poly_values_file ("poly_values.txt"); poly_values_file << time_degree; poly_values_file.close ();
 }
 else
 {
@@ -767,6 +768,7 @@ std::ofstream estimator_values_file ("estimator_values.txt", std::ios::app); est
 std::ofstream dt_values_file ("dt_values.txt", std::ios::app); dt_values_file << std::endl << std::setprecision (9) << dt << std::setprecision (6); dt_values_file.close ();
 std::ofstream dof_values_file ("dof_values.txt", std::ios::app); dof_values_file << std::endl << std::setprecision (9) << dof_handler_space.n_dofs () << std::setprecision (6); dof_values_file.close ();
 std::ofstream hmin_values_file ("hmin_values.txt", std::ios::app); hmin_values_file << std::endl << std::setprecision (9) << GridTools::minimal_cell_diameter (triangulation_space) << std::setprecision (6); hmin_values_file.close ();
+std::ofstream poly_values_file ("poly_values.txt", std::ios::app); poly_values_file << std::endl << time_degree; poly_values_file.close ();
 }
 }
 }
@@ -1719,7 +1721,7 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
 
     refine_mesh ();
 
-    if (time_est > temporal_refinement_threshold) {dt *= 0.5; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt); time_degree = (unsigned int)(fmax(0.0, ceil(time_degree_max - 0.5*log(dt_init/dt))));}
+    if (time_est > temporal_refinement_threshold) {dt *= 0.5; time_degree = (unsigned int)(fmax(0.0, ceil(time_degree_max - 0.6*log(dt_init/dt)))); if (time_degree != old_time_degree ) {dt *= 0.5;} triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt);}
     if (mesh_change == true || time_est > temporal_refinement_threshold)
     {
     deallog << std::endl;
