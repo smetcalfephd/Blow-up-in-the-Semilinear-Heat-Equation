@@ -211,9 +211,9 @@ FE_Q<dim> fe_space (space_degree); FE_DGQ<1> fe_time (time_degree); FESystem<dim
 
 if (time_est > temporal_refinement_threshold) {dof_handler_time.distribute_dofs (fe_time);}
 
-if (mesh_change == true)
+if (time_degree != old_time_degree || mesh_change == true)
 {
-dof_handler_space.distribute_dofs (fe_space); dof_handler.distribute_dofs (fe);
+if (mesh_change == true) {dof_handler_space.distribute_dofs (fe_space);} dof_handler.distribute_dofs (fe);
 
 constraints.clear ();
 DoFTools::make_hanging_node_constraints (dof_handler, constraints);
@@ -231,7 +231,7 @@ solution.reinit (time_degree + 1);
 
 solution.collect_sizes ();
 
-refinement_vector.reinit (triangulation_space.n_active_cells());
+if (mesh_change == true) {refinement_vector.reinit (triangulation_space.n_active_cells());}
 }
 
 create_static_system_matrix ();
