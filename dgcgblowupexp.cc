@@ -1719,7 +1719,7 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
 
     refine_mesh ();
 
-    if (time_est > temporal_refinement_threshold) {dt *= 0.5; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt); time_degree = (unsigned int)(fmax(0.0, round(time_degree_max - log(dt_init/dt))));}
+    if (time_est > temporal_refinement_threshold) {dt *= 0.5; triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt); time_degree = (unsigned int)(fmax(0.0, ceil(time_degree_max - 0.5*log(dt_init/dt))));}
     if (mesh_change == true || time_est > temporal_refinement_threshold)
     {
     deallog << std::endl;
@@ -1729,9 +1729,9 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
     deallog << "Recomputing the solution..." << std::endl << std::endl;
 
     setup_system_partial ();
-    assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*time_degree) + 1); // Setup and solve the system and output the numerical solution
-    compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2, false); // Compute the space estimator
-    compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*time_degree) + 2); // Compute the time estimator
+    assemble_and_solve (int(1.5*space_degree) + 1, int(1.5*old_time_degree) + 1); // Setup and solve the system and output the numerical solution
+    compute_space_estimator (int(1.5*space_degree) + 1, int(1.5*old_time_degree) + 2, false); // Compute the space estimator
+    compute_time_estimator (int(1.5*space_degree) + 1, int(1.5*old_time_degree) + 2); // Compute the time estimator
     }
     }
 
