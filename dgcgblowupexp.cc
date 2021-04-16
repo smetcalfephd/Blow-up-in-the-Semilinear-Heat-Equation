@@ -78,27 +78,27 @@ public:
 
     // Discretisation parameters
     const unsigned int space_degree = 8; // Spatial polynomial degree
-    const unsigned int time_degree_max = 3; // The maximum temporal polynomial degree
+    const unsigned int time_degree_max = 5; // The maximum temporal polynomial degree
 	unsigned int time_degree = time_degree_max; // Temporal polynomial degree
     unsigned int old_time_degree = time_degree_max; // The old temporal polynomial degree
-    const unsigned int refine_every_n_timesteps = 3; // Potentially refine the mesh every n timesteps
+    const unsigned int refine_every_n_timesteps = 2; // Potentially refine the mesh every n timesteps
     unsigned int timestep_number = 0; // The current timestep
     double time = 0; // The current time
-    double dt = 0.125*0.1; // The current timestep length
+    double dt = 0.5*0.1; // The current timestep length
 	double dt_old = dt; // The timestep length on the last time interval
     double dt_init = dt;
 
 	// Error estimator thresholds
-    double spatial_refinement_threshold = 0.00001; // The spatial refinement threshold
+    double spatial_refinement_threshold = 5e-6; // The spatial refinement threshold
     double spatial_coarsening_threshold = 0.1*std::pow(2.0, -1.0*space_degree)*spatial_refinement_threshold; // The spatial coarsening threshold
-	double temporal_refinement_threshold = 0.0000001; // The temporal refinement threshold
+	double temporal_refinement_threshold = 1e-10; // The temporal refinement threshold
 	const double delta_residual_threshold = 1e-4; // The threshold for the delta equation residual above which we consider the delta equation as having no root
 
     // Nonlinear solver parameters
     const std::string nonlinear_solver = "picard"; // Choose whether the nonlinear solver uses the "picard", "newton" or "hybrid" method
     const unsigned int newton_every_x_steps = 4; // If using the hybrid method, does a Newton step every x iterations
     const unsigned int maximum_nonlinear_iterates = 35; // Maximum number of iterates the nonlinear solver will do before terminating
-    const double nonlinear_residual_threshold = 1e-13; // The nonlinear solver will continue to iterate until the difference in solutions is less than ||U||*nonlinear_residual_threshold
+    const double nonlinear_residual_threshold = 1e-14; // The nonlinear solver will continue to iterate until the difference in solutions is less than ||U||*nonlinear_residual_threshold
 
     // User parameters
     const bool output_solution = false; // Choose whether to output the solution (.gnuplot)
@@ -1475,7 +1475,6 @@ typename DoFHandler<dim>::active_cell_iterator cell = dof_handler_space.begin_ac
 
         discrete_laplacian_jump_value = -L2_projection_f(0) + solution_time_derivative_value + (1/dt_old)*old_Q_derivative_values[no_q_time-1]*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
         }
-
         }
         else
         {
@@ -1499,10 +1498,12 @@ typename DoFHandler<dim>::active_cell_iterator cell = dof_handler_space.begin_ac
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 for (unsigned int r = 0; r < time_degree + 1; ++r)
                 solution_time_derivative_value += solution.block(r)(local_dof_indices[i])*fe_values_space.shape_value(i,q_space)*fe_values_time.shape_grad(r,0)[0];
+
+        discrete_laplacian_jump_value -= solution_time_derivative_value;
         }
 
         jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
-        discrete_laplacian_jump_value += L2_projection_f_values[0] - solution_time_derivative_value - (1/dt)*Q_derivative_values[0]*jump_value;
+        discrete_laplacian_jump_value += L2_projection_f_values[0] - (1/dt)*Q_derivative_values[0]*jump_value;
 
 	        for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
             {
@@ -1583,7 +1584,7 @@ typename DoFHandler<dim>::active_cell_iterator union_cell = dof_handler_space_un
 
         for (unsigned int q_space = 0; q_space < no_q_space; ++q_space)
         {
-        switch (old_time_degree) {case 0: L2_projection_f(0) = old_solution_values(q_space)*old_solution_values(q_space); break;
+        switch (old_time_degree) {case 0: discrete_laplacian_jump_value = -old_solution_values(q_space)*old_solution_values(q_space); break;
         default: L2_projection_f(0) = 0; old_L2_projection_rhs = 0; solution_time_derivative_value = 0;
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
@@ -1600,9 +1601,11 @@ typename DoFHandler<dim>::active_cell_iterator union_cell = dof_handler_space_un
 	        for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 for (unsigned int r = 0; r < old_time_degree + 1; ++r)
                 solution_time_derivative_value += old_solution_union.block(r)(local_dof_indices[i])*fe_values_space.shape_value(i, q_space)*old_fe_values_time.shape_grad(r, no_q_time - 1)[0];
+
+        discrete_laplacian_jump_value = -L2_projection_f(0) + solution_time_derivative_value;
         }
 
-        discrete_laplacian_jump_value = -L2_projection_f(0) + solution_time_derivative_value + (1/dt_old)*old_Q_derivative_values[no_q_time-1]*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);
+        discrete_laplacian_jump_value += (1/dt_old)*old_Q_derivative_values[no_q_time-1]*(old_solution_values(q_space) - old_old_solution_plus_values[q_space]);;
 
         switch (time_degree) {case 0: for (unsigned int q_time = 0; q_time < no_q_time; ++q_time) {L2_projection_f_values[q_time] = solution_values(q_space)*solution_values(q_space);} break;
         default: L2_projection_rhs = 0; solution_time_derivative_value = 0;
@@ -1621,10 +1624,12 @@ typename DoFHandler<dim>::active_cell_iterator union_cell = dof_handler_space_un
             for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 for (unsigned int r = 0; r < time_degree + 1; ++r)
                 solution_time_derivative_value += solution_union.block(r)(local_dof_indices[i])*fe_values_space.shape_value(i, q_space)*fe_values_time.shape_grad(r, 0)[0];
+
+        discrete_laplacian_jump_value -= solution_time_derivative_value;
         }
 
         jump_value = solution_values(q_space) - old_solution_values(q_space + (no_q_time - 1)*no_q_space);
-        discrete_laplacian_jump_value += L2_projection_f_values[0] - solution_time_derivative_value - (1/dt)*Q_derivative_values[0]*jump_value;
+        discrete_laplacian_jump_value += L2_projection_f_values[0] - (1/dt)*Q_derivative_values[0]*jump_value;
 
             for (unsigned int q_time = 0; q_time < no_q_time; ++q_time)
             {
