@@ -98,7 +98,7 @@ public:
     const std::string nonlinear_solver = "picard"; // Choose whether the nonlinear solver uses the "picard", "newton" or "hybrid" method
     const unsigned int newton_every_x_steps = 4; // If using the hybrid method, does a Newton step every x iterations
     const unsigned int maximum_nonlinear_iterates = 35; // Maximum number of iterates the nonlinear solver will do before terminating
-    const double nonlinear_residual_threshold = 1e-14; // The nonlinear solver will continue to iterate until the difference in solutions is less than ||U||*nonlinear_residual_threshold
+    const double nonlinear_residual_threshold = 2e-14; // The nonlinear solver will continue to iterate until the difference in solutions is less than ||U||*nonlinear_residual_threshold
 
     // User parameters
     const bool output_solution = false; // Choose whether to output the solution (.gnuplot)
@@ -1735,7 +1735,7 @@ deallog << std::endl << "~~Setting up the initial mesh and timestep length on th
 
     refine_mesh ();
 
-    if (time_est > temporal_refinement_threshold) {dt *= 0.5; time_degree = (unsigned int)(fmax(0.0, ceil(time_degree_max - 0.47*log(dt_init/dt)))); if (time_degree != old_time_degree ) {dt *= 0.5;} triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt);}
+    if (time_est > temporal_refinement_threshold) {dt *= 0.5; time_degree = (unsigned int)(fmax(0.0, ceil(time_degree_max - 0.71*log(dt_init/dt)))); if (time_degree != old_time_degree ) {dt *= 0.5;} triangulation_time.clear(); GridGenerator::hyper_cube (triangulation_time, 0, dt);}
     if (mesh_change == true || time_est > temporal_refinement_threshold)
     {
     deallog << std::endl;
